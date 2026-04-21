@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "Bash(dotnet add:*)",
+      "Bash(dotnet ef:*)",
+      "Bash(dotnet build:*)",
+      "Bash(npx @angular/cli@17 new pakwaan-crm-frontend --standalone --routing --style=scss --skip-git --no-interactive)",
+      "Bash(npx @angular/cli@17 add @angular/material --theme=indigo-pink --typography=true --animations=enabled --skip-confirmation)",
+      "Bash(npx @angular/cli@17 add @angular/material --skip-confirmation --theme=indigo-pink --typography=true --animations=enabled)",
+      "Bash(npm install *)",
+      "Bash(python *)",
+      "Bash(cmd /c \"rmdir /s /q C:\\\\Users\\\\Haxcan\\\\Desktop\\\\PakwaanCrm\\\\pakwaan-crm-frontend\")",
+      "Bash(npx @angular/cli@17 build --configuration=development)",
+      "Bash(dotnet run *)",
+      "Bash(npx ng *)",
+      "Bash(taskkill *)",
+      "Bash(cmd *)",
+      "Bash(powershell *)"
+    ]
+  }
+}

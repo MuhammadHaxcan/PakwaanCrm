@@ -1,0 +1,6 @@
+@PakwaanCrm.API_HostAddress = http://localhost:5038
+
+GET {{PakwaanCrm.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
