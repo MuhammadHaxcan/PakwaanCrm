@@ -19,6 +19,20 @@ public class VoucherRepository : Repository<Voucher>, IVoucherRepository
                 .ThenInclude(l => l.Item)
             .FirstOrDefaultAsync(v => v.Id == id, ct);
 
+    public async Task<Voucher?> GetWithLinesByVoucherNoAsync(string voucherNo, CancellationToken ct = default)
+    {
+        var normalized = voucherNo.Trim().ToUpper();
+
+        return await _context.Vouchers
+            .Include(v => v.Lines)
+                .ThenInclude(l => l.Customer)
+            .Include(v => v.Lines)
+                .ThenInclude(l => l.Vendor)
+            .Include(v => v.Lines)
+                .ThenInclude(l => l.Item)
+            .FirstOrDefaultAsync(v => v.VoucherNo.ToUpper() == normalized, ct);
+    }
+
     public async Task<List<Voucher>> GetListWithLinesAsync(int? voucherType, int page, int pageSize, CancellationToken ct = default)
     {
         var query = _context.Vouchers
@@ -56,4 +70,7 @@ public class VoucherRepository : Repository<Voucher>, IVoucherRepository
 
         return $"{prefix}{next:D4}";
     }
+
+    public void RemoveLines(IEnumerable<VoucherLine> lines)
+        => _context.VoucherLines.RemoveRange(lines);
 }

@@ -28,8 +28,14 @@ export interface VoucherLine {
 }
 export interface VoucherDetail {
   id: number; voucherNo: string; date: string;
-  voucherType: VoucherType; description?: string; notes?: string;
+  voucherType: VoucherType; voucherTypeLabel: string; description?: string; notes?: string;
   createdAt: string; lines: VoucherLine[];
+}
+
+export interface SalesVoucherCreateResult {
+  createdCount: number;
+  voucherNos: string[];
+  vouchers: VoucherDetail[];
 }
 
 // Report models
@@ -45,11 +51,12 @@ export interface MasterReportEntry {
   date: string; voucherNo: string; voucherType: string; description?: string;
   accountName: string; accountCategory: string;
   itemName?: string; quantity?: number; quantityTypeLabel?: string; rate?: number;
-  debit: number; credit: number;
+  debit: number; credit: number; runningBalance: number;
 }
 export interface MasterReportResponse {
   entries: MasterReportEntry[]; totalRecords: number;
   hasMoreData: boolean; totalDebit: number; totalCredit: number;
+  hasOpeningBalance: boolean; openingDebit: number; openingCredit: number; openingBalance: number;
 }
 export interface AccountBalance {
   id: number; name: string; accountType: string;
@@ -62,7 +69,8 @@ export interface CreateVendorRequest { name: string; phone?: string; address?: s
 export interface CreateItemRequest { name: string; unit: ItemUnit; defaultRate: number; isActive: boolean; }
 
 export interface SalesLineRequest {
-  customerId: number; itemId: number; quantityType: QuantityType;
+  customerId: number;
+  itemId: number; quantityType: QuantityType;
   quantity: number; rate: number; description?: string;
 }
 export interface CreateSalesVoucherRequest {
@@ -78,7 +86,9 @@ export interface CreateJournalVoucherRequest {
 }
 
 export interface VendorPurchaseLineRequest {
+  itemId?: number;
   itemName?: string;
+  quantityType?: QuantityType;
   quantity: number;
   rate: number;
   description?: string;
@@ -89,8 +99,5 @@ export interface CreateVendorPurchaseRequest {
   vendorId: number;
   description?: string;
   notes?: string;
-  paidAmount: number;
-  paymentAccountName?: string;
-  paymentDescription?: string;
   lines: VendorPurchaseLineRequest[];
 }

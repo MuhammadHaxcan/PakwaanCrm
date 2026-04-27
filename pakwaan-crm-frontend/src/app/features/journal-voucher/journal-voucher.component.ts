@@ -1,80 +1,79 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormArray, FormGroup, Validators } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
+import { ReactiveFormsModule, FormArray, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { RouterModule } from '@angular/router';
-import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select/searchable-select.component';
-import { MasterDataService } from '../../core/services/master-data.service';
-import { ApiService } from '../../core/services/api.service';
-import { ToastService } from '../../core/services/toast.service';
-import { CreateJournalVoucherRequest } from '../../core/models/models';
-import { EntryType, ENTRY_TYPE_LABELS } from '../../core/models/enums';
 import { forkJoin } from 'rxjs';
+import { ApiService } from '../../core/services/api.service';
+import { MasterDataService } from '../../core/services/master-data.service';
+import { ToastService } from '../../core/services/toast.service';
+import { CreateJournalVoucherRequest, VoucherDetail } from '../../core/models/models';
+import { ENTRY_TYPE_LABELS, EntryType, VoucherType } from '../../core/models/enums';
+import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select/searchable-select.component';
+import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
 
 @Component({
   selector: 'app-general-voucher',
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule,
-    MatCardModule, MatFormFieldModule, MatInputModule, MatSelectModule,
-    MatButtonModule, MatIconModule, MatTooltipModule,
-    RouterModule,
+    CommonModule,
+    ReactiveFormsModule,
+    MatButtonModule,
+    MatCardModule,
+    MatDatepickerModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatSelectModule,
+    MatTooltipModule,
     SearchableSelectComponent
   ],
   template: `
     <div class="page-container">
-
-      <!-- Page header -->
       <div class="page-header">
         <div class="ph-icon"><mat-icon>menu_book</mat-icon></div>
         <div class="ph-text">
-          <h2>General Journal</h2>
-          <p>Use this for manual adjustments, receipts, payments, and exceptional entries</p>
+          <h2>{{ isEditMode ? 'Edit Journal Voucher' : 'Journal Voucher' }}</h2>
+          <p>Use this mainly for vendor payments, customer receipts, cash movements, and exceptional adjustments</p>
+          <p *ngIf="isEditMode && voucherNo" style="margin-top:6px;font-weight:600;color:#3949ab">Voucher: {{ voucherNo }}</p>
         </div>
       </div>
 
-      <div class="filter-panel" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div style="color:#475569;font-size:13px">
-          For supplier bills, packaging purchases, and raw material purchases, use Vendor Purchase instead.
-        </div>
-        <a mat-stroked-button color="primary" routerLink="/vendor-purchases">
-          <mat-icon>inventory_2</mat-icon> Open Vendor Purchase
-        </a>
-      </div>
-
+      
       <mat-card>
         <mat-card-content style="padding:24px">
-
           <div *ngIf="loading" class="text-center" style="padding:32px;color:#94a3b8">
             <mat-icon style="font-size:36px;width:36px;height:36px;opacity:.4">hourglass_empty</mat-icon>
-            <p>Loading data…</p>
+            <p>Loading data...</p>
           </div>
 
-          <form *ngIf="!loading" [formGroup]="form" (ngSubmit)="onSubmit()">
+          <div *ngIf="!loading && loadError" class="text-red" style="padding:12px 0">{{ loadError }}</div>
 
-            <!-- Header fields -->
+          <form *ngIf="!loading && !loadError" [formGroup]="form" (ngSubmit)="onSubmit()">
             <div class="form-row">
               <mat-form-field appearance="outline">
                 <mat-label>Date</mat-label>
-                <input matInput type="date" formControlName="date" />
+                <input matInput [matDatepicker]="journalDatePicker" formControlName="date" placeholder="dd/mm/yyyy" />
+                <mat-datepicker-toggle matIconSuffix [for]="journalDatePicker"></mat-datepicker-toggle>
+                <mat-datepicker #journalDatePicker></mat-datepicker>
               </mat-form-field>
               <mat-form-field appearance="outline" style="flex:2">
                 <mat-label>Description</mat-label>
-                <input matInput formControlName="description" placeholder="Voucher description…" />
+                <input matInput formControlName="description" placeholder="Voucher description..." />
               </mat-form-field>
               <mat-form-field appearance="outline" style="flex:2">
                 <mat-label>Notes</mat-label>
-                <input matInput formControlName="notes" placeholder="Optional notes…" />
+                <input matInput formControlName="notes" placeholder="Optional notes..." />
               </mat-form-field>
             </div>
 
-            <!-- Lines grid -->
             <div class="line-grid">
               <table>
                 <thead>
@@ -109,11 +108,11 @@ import { forkJoin } from 'rxjs';
                           [options]="vendorOptions" placeholder="Vendor" formControlName="vendorId">
                         </app-searchable-select>
                         <input *ngSwitchDefault class="inline-input w-full"
-                          formControlName="freeText" placeholder="Account / name…" />
+                          formControlName="freeText" placeholder="Account / name..." />
                       </ng-container>
                     </td>
                     <td>
-                      <input class="inline-input w-full" formControlName="description" placeholder="Description…" />
+                      <input class="inline-input w-full" formControlName="description" placeholder="Description..." />
                     </td>
                     <td>
                       <input type="number" class="inline-input w-fixed" formControlName="debit"
@@ -127,7 +126,7 @@ import { forkJoin } from 'rxjs';
                     </td>
                     <td>
                       <button mat-icon-button type="button" color="warn"
-                        [disabled]="linesArray.length === 1"
+                        [disabled]="linesArray.length <= 2"
                         (click)="removeLine(i)" matTooltip="Remove">
                         <mat-icon>delete_outline</mat-icon>
                       </button>
@@ -154,7 +153,6 @@ import { forkJoin } from 'rxjs';
               </table>
             </div>
 
-            <!-- Actions -->
             <div class="grid-actions">
               <button mat-stroked-button type="button" color="primary" (click)="addLine()">
                 <mat-icon>add</mat-icon> Add Line
@@ -165,21 +163,21 @@ import { forkJoin } from 'rxjs';
                 [disabled]="submitting || form.invalid || balance !== 0"
                 style="padding:0 24px;height:40px">
                 <mat-icon *ngIf="!submitting" style="margin-right:6px">save</mat-icon>
-                {{ submitting ? 'Saving…' : 'Save Voucher' }}
+                {{ submitting ? 'Saving...' : (isEditMode ? 'Update Voucher' : 'Save Voucher') }}
               </button>
             </div>
-
           </form>
         </mat-card-content>
       </mat-card>
     </div>
   `,
   styles: [`
-    /* No local styles needed — all in global styles.scss */
+    /* Shared page styling lives in global styles.scss */
   `]
 })
 export class GeneralVoucherComponent implements OnInit {
   private fb = inject(FormBuilder);
+  private route = inject(ActivatedRoute);
   private masterData = inject(MasterDataService);
   private api = inject(ApiService);
   private toast = inject(ToastService);
@@ -190,33 +188,88 @@ export class GeneralVoucherComponent implements OnInit {
   loading = true;
   submitting = false;
   error = '';
+  loadError = '';
+  isEditMode = false;
+  private voucherId: number | null = null;
+  voucherNo = '';
 
-  entryTypeOptions = Object.entries(ENTRY_TYPE_LABELS)
-    .map(([value, label]) => ({ value: +value, label }));
+  entryTypeOptions = [
+    { value: EntryType.VendorDebit, label: ENTRY_TYPE_LABELS[EntryType.VendorDebit] },
+    { value: EntryType.CashCredit, label: ENTRY_TYPE_LABELS[EntryType.CashCredit] },
+    { value: EntryType.CashDebit, label: ENTRY_TYPE_LABELS[EntryType.CashDebit] },
+    { value: EntryType.CustomerCredit, label: ENTRY_TYPE_LABELS[EntryType.CustomerCredit] },
+    { value: EntryType.Expense, label: ENTRY_TYPE_LABELS[EntryType.Expense] },
+    { value: EntryType.Revenue, label: ENTRY_TYPE_LABELS[EntryType.Revenue] },
+    { value: EntryType.CustomerDebit, label: ENTRY_TYPE_LABELS[EntryType.CustomerDebit] },
+    { value: EntryType.VendorCredit, label: ENTRY_TYPE_LABELS[EntryType.VendorCredit] }
+  ];
 
   ngOnInit() {
     this.form = this.fb.group({
-      date: [new Date().toISOString().split('T')[0], Validators.required],
+      date: [todayDate(), Validators.required],
       description: [''],
       notes: [''],
-      lines: this.fb.array([this.newLine(EntryType.Expense), this.newLine(EntryType.CashCredit)])
+      lines: this.fb.array([
+        this.createLineGroup(EntryType.VendorDebit),
+        this.createLineGroup(EntryType.CashCredit)
+      ])
     });
 
-    forkJoin([
-      this.masterData.loadCustomers(),
-      this.masterData.loadVendors()
-    ]).subscribe(([customers, vendors]) => {
-      this.customerOptions = customers.map(c => ({ id: c.id, name: c.name }));
-      this.vendorOptions   = vendors.map(v => ({ id: v.id, name: v.name }));
-      this.loading = false;
+    const idParam = this.route.snapshot.paramMap.get('id');
+    this.isEditMode = !!idParam;
+    this.voucherId = idParam ? +idParam : null;
+
+    if (this.isEditMode && this.voucherId) {
+      forkJoin({
+        customers: this.masterData.loadCustomers(),
+        vendors: this.masterData.loadVendors(),
+        voucher: this.api.get<VoucherDetail>(`/vouchers/${this.voucherId}`)
+      }).subscribe({
+        next: ({ customers, vendors, voucher }) => {
+          this.customerOptions = customers.map(c => ({ id: c.id, name: c.name }));
+          this.vendorOptions = vendors.map(v => ({ id: v.id, name: v.name }));
+          this.populateVoucher(voucher);
+          this.loading = false;
+        },
+        error: (err: Error) => {
+          this.loadError = err.message;
+          this.loading = false;
+        }
+      });
+      return;
+    }
+
+    forkJoin({
+      customers: this.masterData.loadCustomers(),
+      vendors: this.masterData.loadVendors()
+    }).subscribe({
+      next: ({ customers, vendors }) => {
+        this.customerOptions = customers.map(c => ({ id: c.id, name: c.name }));
+        this.vendorOptions = vendors.map(v => ({ id: v.id, name: v.name }));
+        this.loading = false;
+      },
+      error: (err: Error) => {
+        this.loadError = err.message;
+        this.loading = false;
+      }
     });
   }
 
-  get linesArray() { return this.form.get('lines') as FormArray; }
+  get linesArray() {
+    return this.form.get('lines') as FormArray;
+  }
 
-  get totalDebit()  { return this.linesArray.controls.reduce((s, c) => s + (+c.get('debit')?.value  || 0), 0); }
-  get totalCredit() { return this.linesArray.controls.reduce((s, c) => s + (+c.get('credit')?.value || 0), 0); }
-  get balance()     { return Math.round((this.totalDebit - this.totalCredit) * 100) / 100; }
+  get totalDebit() {
+    return this.linesArray.controls.reduce((sum, control) => sum + (+control.get('debit')?.value || 0), 0);
+  }
+
+  get totalCredit() {
+    return this.linesArray.controls.reduce((sum, control) => sum + (+control.get('credit')?.value || 0), 0);
+  }
+
+  get balance() {
+    return Math.round((this.totalDebit - this.totalCredit) * 100) / 100;
+  }
 
   get balanceClass() {
     if (this.balance === 0 && (this.totalDebit > 0 || this.totalCredit > 0)) return 'chip-balanced';
@@ -224,63 +277,130 @@ export class GeneralVoucherComponent implements OnInit {
     return 'chip-unbalanced';
   }
 
-  getEntryTypeVal(i: number): number { return +this.linesArray.at(i).get('entryType')?.value; }
-
-  onEntryTypeChange(i: number) {
-    this.linesArray.at(i).patchValue({ customerId: null, vendorId: null, freeText: '' });
+  getEntryTypeVal(index: number) {
+    return +this.linesArray.at(index).get('entryType')?.value;
   }
 
-  onAmountChange(i: number, field: 'debit' | 'credit') {
-    const val = +this.linesArray.at(i).get(field)?.value || 0;
-    if (val > 0) this.linesArray.at(i).patchValue({ [field === 'debit' ? 'credit' : 'debit']: 0 });
-  }
-
-  newLine(entryType: EntryType = EntryType.Expense): FormGroup {
-    return this.fb.group({
-      entryType:   [entryType, Validators.required],
-      customerId:  [null],
-      vendorId:    [null],
-      freeText:    [''],
-      description: [''],
-      debit:  [0, [Validators.min(0)]],
-      credit: [0, [Validators.min(0)]]
+  onEntryTypeChange(index: number) {
+    this.linesArray.at(index).patchValue({
+      customerId: null,
+      vendorId: null,
+      freeText: ''
     });
   }
 
-  addLine()             { this.linesArray.push(this.newLine()); }
-  removeLine(i: number) { if (this.linesArray.length > 1) this.linesArray.removeAt(i); }
+  onAmountChange(index: number, field: 'debit' | 'credit') {
+    const value = +this.linesArray.at(index).get(field)?.value || 0;
+    if (value > 0) {
+      this.linesArray.at(index).patchValue({
+        [field === 'debit' ? 'credit' : 'debit']: 0
+      });
+    }
+  }
+
+  addLine() {
+    this.linesArray.push(this.createLineGroup());
+  }
+
+  removeLine(index: number) {
+    if (this.linesArray.length > 2) this.linesArray.removeAt(index);
+  }
 
   onSubmit() {
     if (this.form.invalid || this.balance !== 0) return;
+
     this.submitting = true;
     this.error = '';
 
-    const val = this.form.value;
+    const value = this.form.value;
     const request: CreateJournalVoucherRequest = {
-      date:        val.date,
-      description: val.description,
-      notes:       val.notes,
-      lines: val.lines.map((l: any) => ({
-        entryType:   +l.entryType,
-        customerId:  l.customerId ? +l.customerId : null,
-        vendorId:    l.vendorId   ? +l.vendorId   : null,
-        freeText:    l.freeText   || null,
-        description: l.description || null,
-        debit:  +l.debit  || 0,
-        credit: +l.credit || 0
+      date: formatDateForApi(value.date),
+      description: value.description || null,
+      notes: value.notes || null,
+      lines: value.lines.map((line: any) => ({
+        entryType: +line.entryType,
+        customerId: line.customerId ? +line.customerId : null,
+        vendorId: line.vendorId ? +line.vendorId : null,
+        freeText: line.freeText || null,
+        description: line.description || null,
+        debit: +line.debit || 0,
+        credit: +line.credit || 0
       }))
     };
 
-    this.api.post<any>('/vouchers/general', request).subscribe({
-      next: res => {
-        this.toast.success(`Saved! Voucher: ${res.voucherNo}`);
-        this.form.reset({ date: new Date().toISOString().split('T')[0] });
-        this.linesArray.clear();
-        this.linesArray.push(this.newLine(EntryType.Expense));
-        this.linesArray.push(this.newLine(EntryType.CashCredit));
+    const request$ = this.isEditMode && this.voucherId
+      ? this.api.put<VoucherDetail>(`/vouchers/${this.voucherId}/general`, request)
+      : this.api.post<VoucherDetail>('/vouchers/general', request);
+
+    request$.subscribe({
+      next: result => {
+        this.voucherNo = result.voucherNo;
+        if (this.isEditMode) {
+          this.toast.success(`Updated voucher ${result.voucherNo}`);
+          this.populateVoucher(result);
+        } else {
+          this.toast.success(`Saved! Voucher: ${result.voucherNo}`);
+          this.form.reset({
+            date: todayDate(),
+            description: '',
+            notes: ''
+          });
+          this.linesArray.clear();
+          this.linesArray.push(this.createLineGroup(EntryType.VendorDebit));
+          this.linesArray.push(this.createLineGroup(EntryType.CashCredit));
+        }
         this.submitting = false;
       },
-      error: (err: Error) => { this.error = err.message; this.submitting = false; }
+      error: (err: Error) => {
+        this.error = err.message;
+        this.submitting = false;
+      }
+    });
+  }
+
+  private populateVoucher(voucher: VoucherDetail) {
+    if (voucher.voucherType !== VoucherType.General) {
+      this.loadError = 'This voucher is not a journal voucher.';
+      return;
+    }
+
+    if (!voucher.lines || voucher.lines.length < 2) {
+      this.loadError = 'Journal voucher lines could not be loaded.';
+      return;
+    }
+
+    this.voucherNo = voucher.voucherNo;
+    this.form.patchValue({
+      date: parseApiDate(voucher.date),
+      description: voucher.description ?? '',
+      notes: voucher.notes ?? ''
+    });
+
+    this.linesArray.clear();
+    voucher.lines.forEach(line => {
+      const group = this.createLineGroup(line.entryType);
+      group.patchValue({
+        entryType: line.entryType,
+        customerId: line.customerId ?? null,
+        vendorId: line.vendorId ?? null,
+        freeText: line.freeText ?? '',
+        description: line.description ?? '',
+        debit: line.debit,
+        credit: line.credit
+      });
+      this.linesArray.push(group);
+    });
+  }
+
+  private createLineGroup(entryType: EntryType = EntryType.Expense): FormGroup {
+    return this.fb.group({
+      entryType: [entryType, Validators.required],
+      customerId: [null],
+      vendorId: [null],
+      freeText: [''],
+      description: [''],
+      debit: [0, [Validators.min(0)]],
+      credit: [0, [Validators.min(0)]]
     });
   }
 }

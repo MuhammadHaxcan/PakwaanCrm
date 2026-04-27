@@ -1,54 +1,73 @@
 import {
   Component,
-  Input,
-  forwardRef,
-  HostListener,
-  ViewChild,
   ElementRef,
+  HostListener,
+  Input,
   OnChanges,
-  SimpleChanges
+  SimpleChanges,
+  ViewChild,
+  forwardRef,
+  ChangeDetectorRef,
+  inject
 } from '@angular/core';
-import { ControlValueAccessor, NG_VALUE_ACCESSOR, FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
+import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 
 export interface SelectOption { id: number | string; name: string; }
 
 @Component({
   selector: 'app-searchable-select',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MatFormFieldModule, MatInputModule, MatIconModule],
   providers: [{ provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => SearchableSelectComponent), multi: true }],
   template: `
-    <div class="ss-wrapper" [class.ss-disabled]="isDisabled" [class.ss-open]="isOpen">
-      <input
-        #inputEl
-        class="ss-input"
-        [placeholder]="placeholder"
-        [(ngModel)]="searchText"
-        (input)="onInput()"
-        (focus)="open()"
-        (keydown)="onKeyDown($event)"
-        [disabled]="isDisabled"
-        autocomplete="off"
-      />
-      <span class="ss-clear" *ngIf="value != null" (mousedown)="clearValue($event)">&times;</span>
-      <span class="ss-arrow" (mousedown)="toggleDropdown($event)">&#9662;</span>
+    <div class="ss-field" #fieldEl>
+      <mat-form-field appearance="outline" floatLabel="always" subscriptSizing="dynamic" class="ss-form-field">
+        <mat-label *ngIf="label">{{ label }}</mat-label>
+        <input
+          #inputEl
+          matInput
+          class="ss-input"
+          [placeholder]="placeholder"
+          [(ngModel)]="searchText"
+          (input)="onInput()"
+          (focus)="open()"
+          (keydown)="onKeyDown($event)"
+          (blur)="onBlur()"
+          [disabled]="isDisabled"
+          autocomplete="off"
+        />
+        <!-- Shown when a value is selected — acts as both clear and dropdown trigger -->
+        <button *ngIf="value != null" mat-icon-button matSuffix type="button"
+          class="ss-icon-btn" (mousedown)="clearValue($event)" tabindex="-1" [attr.title]="'Clear selection'">
+          <mat-icon>close</mat-icon>
+        </button>
+        <!-- Shown when no value selected — opens the dropdown -->
+        <mat-icon *ngIf="value == null" matSuffix class="ss-icon-btn"
+          (mousedown)="toggleDropdown($event)" title="Open dropdown">
+          expand_more
+        </mat-icon>
+      </mat-form-field>
 
-      <div class="ss-dropdown" *ngIf="isOpen && filteredOptions.length > 0" #dropdownEl>
+      <div class="ss-dropdown" *ngIf="isOpen && filteredOptions.length > 0" #dropdownEl [ngStyle]="dropdownStyle">
         <div
           *ngFor="let opt of filteredOptions; let i = index"
           class="ss-option"
           [class.ss-highlighted]="i === highlightedIndex"
           [class.ss-selected]="isSelected(opt)"
           (mousedown)="selectOption(opt)"
-          (mouseover)="highlightedIndex = i"
-        >
-          {{ opt.name }}
+          (mouseover)="highlightedIndex = i">
+          <span class="ss-option-text">{{ opt.name }}</span>
+          <mat-icon *ngIf="isSelected(opt)" class="ss-option-check">check</mat-icon>
         </div>
       </div>
 
-      <div class="ss-dropdown ss-empty" *ngIf="isOpen && filteredOptions.length === 0 && searchText">
-        No results found
+      <div class="ss-dropdown ss-empty" *ngIf="isOpen && filteredOptions.length === 0 && searchText" [ngStyle]="dropdownStyle">
+        <mat-icon>search_off</mat-icon>
+        <span>No match found</span>
       </div>
     </div>
   `,
@@ -58,122 +77,172 @@ export interface SelectOption { id: number | string; name: string; }
       width: 100%;
     }
 
-    .ss-wrapper {
+    .ss-field {
       position: relative;
+      width: 100%;
+    }
+
+    .ss-form-field {
+      width: 100%;
+    }
+
+    :host ::ng-deep .ss-form-field .mat-mdc-form-field-subscript-wrapper,
+    :host ::ng-deep .ss-form-field .mat-mdc-form-field-bottom-align::before {
+      display: none;
+    }
+
+    :host ::ng-deep .ss-form-field .mat-mdc-text-field-wrapper {
+      background: #fff;
+    }
+
+    :host ::ng-deep .ss-form-field .mat-mdc-form-field-infix {
+      min-height: var(--ss-control-height, 46px);
+    }
+
+    :host ::ng-deep .ss-form-field .mat-mdc-form-field-suffix {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      height: 24px;
       display: flex;
       align-items: center;
-      min-height: var(--ss-control-height, 44px);
-      padding: 0 38px 0 12px;
-      border: 1.5px solid var(--control-border, #cbd5e1);
-      border-radius: var(--ss-radius, 12px);
-      background: #fff;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
-      transition: border-color .15s, box-shadow .15s, background-color .15s;
-    }
-
-    .ss-wrapper:hover {
-      border-color: var(--control-border-strong, #94a3b8);
-    }
-
-    .ss-wrapper:focus-within,
-    .ss-wrapper.ss-open {
-      border-color: var(--c-primary, #3949ab);
-      box-shadow: 0 0 0 4px rgba(57, 73, 171, .12);
-    }
-
-    .ss-disabled {
-      background: #f8fafc;
-      opacity: .8;
-      pointer-events: none;
     }
 
     .ss-input {
-      flex: 1;
-      min-width: 60px;
-      border: none;
-      outline: none;
-      background: transparent;
-      color: var(--c-text, #1e293b);
-      font-size: 14px;
-      font-family: 'Inter', sans-serif;
-      padding: 10px 0;
+      cursor: text;
     }
 
-    .ss-input::placeholder {
-      color: var(--c-text-3, #94a3b8);
+    /* Shared style for the icon button and arrow icon in suffix area */
+    .ss-icon-btn {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 24px !important;
+      height: 24px !important;
+      color: #94a3b8 !important;
+      cursor: pointer !important;
+      padding: 0 !important;
+      flex-shrink: 0 !important;
     }
 
-    .ss-arrow,
-    .ss-clear {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #64748b;
-      cursor: pointer;
-      user-select: none;
-      line-height: 1;
+    .ss-icon-btn:hover {
+      color: #dc2626 !important;
     }
 
-    .ss-arrow {
-      right: 12px;
-      font-size: 11px;
+    .ss-icon-btn mat-icon {
+      font-size: 18px !important;
+      width: 18px !important;
+      height: 18px !important;
     }
 
-    .ss-clear {
-      right: 28px;
-      font-size: 15px;
-    }
-
+    /* Dropdown panel */
     .ss-dropdown {
-      position: absolute;
-      top: calc(100% + 6px);
-      left: 0;
-      right: 0;
-      z-index: 2000;
+      position: fixed;
+      z-index: 9999;
       overflow-y: auto;
-      max-height: 240px;
+      max-height: 300px;
       background: #fff;
-      border: 1px solid var(--control-border, #cbd5e1);
-      border-radius: 12px;
-      box-shadow: 0 12px 28px rgba(15, 23, 42, .14);
+      border: 1px solid #e8ecf1;
+      border-radius: 10px;
+      box-shadow: 0 4px 16px rgba(15, 23, 42, .08), 0 1px 4px rgba(15, 23, 42, .05);
+      padding: 5px 0;
+      min-width: 200px;
     }
 
     .ss-option {
-      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
       cursor: pointer;
-      color: var(--c-text, #1e293b);
+      color: #374151;
       font-size: 13.5px;
-      transition: background-color .12s, color .12s;
+      font-family: 'Inter', sans-serif;
+      transition: background-color .12s;
+      position: relative;
     }
 
+    .ss-option::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 14px;
+      right: 14px;
+      height: 1px;
+      background: #f1f5f9;
+    }
+
+    .ss-option:last-child::after {
+      display: none;
+    }
+
+    .ss-option:hover,
     .ss-option.ss-highlighted {
-      background: #eef2ff;
+      background: #f8fafc;
     }
 
     .ss-option.ss-selected {
-      color: var(--c-primary, #3949ab);
+      color: #3949ab;
       font-weight: 600;
+      background: #f0f4ff;
     }
 
+    .ss-option.ss-selected:hover,
+    .ss-option.ss-selected.ss-highlighted {
+      background: #e8eeff;
+    }
+
+    .ss-option-text {
+      flex: 1;
+    }
+
+    .ss-option-check {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+      color: #3949ab;
+      flex-shrink: 0;
+      margin-left: 10px;
+    }
+
+    /* Empty state */
     .ss-empty {
-      padding: 12px;
-      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 16px;
+      color: #9ca3af;
       font-size: 13px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .ss-empty mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      opacity: .5;
     }
   `]
 })
 export class SearchableSelectComponent implements ControlValueAccessor, OnChanges {
+  @Input() label = '';
   @Input() options: SelectOption[] = [];
   @Input() placeholder = 'Select...';
   @Input() isDisabled = false;
+
+  @ViewChild('fieldEl') fieldEl!: ElementRef<HTMLDivElement>;
   @ViewChild('inputEl') inputEl!: ElementRef<HTMLInputElement>;
   @ViewChild('dropdownEl') dropdownEl!: ElementRef<HTMLDivElement>;
+
+  private cdr = inject(ChangeDetectorRef);
 
   value: number | string | null = null;
   searchText = '';
   isOpen = false;
   highlightedIndex = -1;
   filteredOptions: SelectOption[] = [];
+  dropdownStyle: Record<string, string> = {};
 
   private onChange: (v: any) => void = () => {};
   private onTouched: () => void = () => {};
@@ -198,11 +267,22 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnChange
     this.filterOptions();
     this.isOpen = true;
     this.highlightedIndex = -1;
+    this.updateDropdownPosition();
   }
 
   open() {
     this.filterOptions();
     this.isOpen = true;
+    this.highlightedIndex = -1;
+    this.updateDropdownPosition();
+  }
+
+  onBlur() {
+    setTimeout(() => {
+      this.isOpen = false;
+      this.highlightedIndex = -1;
+      this.onTouched();
+    }, 180);
   }
 
   toggleDropdown(event: MouseEvent) {
@@ -210,6 +290,7 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnChange
     this.isOpen = !this.isOpen;
     if (this.isOpen) {
       this.filterOptions();
+      this.updateDropdownPosition();
       this.inputEl?.nativeElement.focus();
     }
   }
@@ -228,15 +309,18 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnChange
     this.highlightedIndex = -1;
     this.onChange(this.value);
     this.onTouched();
+    this.cdr.detectChanges();
   }
 
   clearValue(event: MouseEvent) {
     event.preventDefault();
+    event.stopPropagation();
     this.value = null;
     this.searchText = '';
     this.filterOptions();
     this.onChange(null);
     this.onTouched();
+    this.updateDropdownPosition();
   }
 
   isSelected(option: SelectOption): boolean {
@@ -257,8 +341,10 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnChange
         break;
       case 'ArrowUp':
         event.preventDefault();
-        this.highlightedIndex = Math.max(this.highlightedIndex - 1, 0);
-        this.scrollToHighlighted();
+        if (this.highlightedIndex > 0) {
+          this.highlightedIndex--;
+          this.scrollToHighlighted();
+        }
         break;
       case 'Enter':
         if (this.highlightedIndex >= 0 && this.filteredOptions[this.highlightedIndex]) {
@@ -269,9 +355,24 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnChange
         event.preventDefault();
         break;
       case 'Escape':
-      case 'Tab':
         this.isOpen = false;
+        this.highlightedIndex = -1;
+        this.onTouched();
         break;
+    }
+  }
+
+  @HostListener('window:resize')
+  @HostListener('window:scroll', ['$event'])
+  onViewportChange() {
+    if (this.isOpen) this.updateDropdownPosition();
+  }
+
+  @HostListener('document:mousedown', ['$event'])
+  onDocClick(event: MouseEvent) {
+    const target = event.target as HTMLElement;
+    if (!target.closest('app-searchable-select')) {
+      this.isOpen = false;
     }
   }
 
@@ -286,14 +387,32 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnChange
       this.searchText = '';
       return;
     }
-
     const found = this.options.find(option => Number(option.id) === Number(this.value));
     if (found) this.searchText = found.name;
+    else this.searchText = '';
   }
 
-  @HostListener('document:mousedown', ['$event'])
-  onDocClick(event: MouseEvent) {
-    const element = event.target as HTMLElement;
-    if (!element.closest('app-searchable-select')) this.isOpen = false;
+  focus() {
+    this.inputEl?.nativeElement.focus();
+  }
+
+  closeDropdown() {
+    this.isOpen = false;
+    this.highlightedIndex = -1;
+  }
+
+  private updateDropdownPosition() {
+    const input = this.inputEl?.nativeElement;
+    if (!input) return;
+
+    const rect = input.getBoundingClientRect();
+    const scrollY = window.scrollY || window.pageYOffset;
+    const scrollX = window.scrollX || window.pageXOffset;
+
+    this.dropdownStyle = {
+      top: `${rect.bottom + scrollY + 5}px`,
+      left: `${rect.left + scrollX}px`,
+      width: `${rect.width}px`
+    };
   }
 }

@@ -48,8 +48,8 @@ public class ReportService : IReportService
             return null;
         }
 
-        var fromDate = startDate?.Date;
-        var toExclusive = endDate?.Date.AddDays(1);
+        var fromDate = NormalizeUtcDate(startDate)?.Date;
+        var toExclusive = NormalizeUtcDate(endDate)?.Date.AddDays(1);
 
         var accountLinesQuery = isCustomer
             ? _context.VoucherLines.Include(l => l.Voucher).Where(l => l.CustomerId == accountId)
@@ -122,6 +122,9 @@ public class ReportService : IReportService
         int page, int pageSize,
         CancellationToken ct = default)
     {
+        var fromDate = NormalizeUtcDate(startDate)?.Date;
+        var toExclusive = NormalizeUtcDate(endDate)?.Date.AddDays(1);
+
         var query = _context.VoucherLines
             .Include(l => l.Voucher)
             .Include(l => l.Customer)
@@ -129,37 +132,95 @@ public class ReportService : IReportService
             .Include(l => l.Item)
             .AsQueryable();
 
-        if (startDate.HasValue) query = query.Where(l => l.Voucher.Date >= startDate.Value);
-        if (endDate.HasValue) query = query.Where(l => l.Voucher.Date <= endDate.Value.AddDays(1));
-        if (customerId.HasValue) query = query.Where(l => l.CustomerId == customerId.Value);
-        if (vendorId.HasValue) query = query.Where(l => l.VendorId == vendorId.Value);
+        if (fromDate.HasValue) query = query.Where(l => l.Voucher.Date >= fromDate.Value);
+        if (toExclusive.HasValue) query = query.Where(l => l.Voucher.Date < toExclusive.Value);
+        if (customerId.HasValue && vendorId.HasValue)
+            query = query.Where(l => l.CustomerId == customerId.Value || l.VendorId == vendorId.Value);
+        else if (customerId.HasValue)
+            query = query.Where(l => l.CustomerId == customerId.Value);
+        else if (vendorId.HasValue)
+            query = query.Where(l => l.VendorId == vendorId.Value);
         if (voucherType.HasValue) query = query.Where(l => (int)l.Voucher.VoucherType == voucherType.Value);
 
-        var totalRecords = await query.CountAsync(ct);
-        var lines = await query
+        decimal openingDebit = 0, openingCredit = 0;
+        bool hasOpeningBalance = false;
+
+        if (fromDate.HasValue)
+        {
+            var openingQuery = _context.VoucherLines
+                .Include(l => l.Voucher)
+                .Where(l => l.Voucher.Date < fromDate.Value)
+                .AsQueryable();
+
+            if (customerId.HasValue && vendorId.HasValue)
+                openingQuery = openingQuery.Where(l => l.CustomerId == customerId.Value || l.VendorId == vendorId.Value);
+            else if (customerId.HasValue)
+                openingQuery = openingQuery.Where(l => l.CustomerId == customerId.Value);
+            else if (vendorId.HasValue)
+                openingQuery = openingQuery.Where(l => l.VendorId == vendorId.Value);
+            if (voucherType.HasValue)
+                openingQuery = openingQuery.Where(l => (int)l.Voucher.VoucherType == voucherType.Value);
+
+            var openingTotals = await openingQuery
+                .Select(l => new { l.Debit, l.Credit })
+                .ToListAsync(ct);
+
+            openingDebit = openingTotals.Sum(x => x.Debit);
+            openingCredit = openingTotals.Sum(x => x.Credit);
+            hasOpeningBalance = true;
+        }
+
+        var openingBalance = openingDebit - openingCredit;
+        var orderedQuery = query
             .OrderBy(l => l.Voucher.Date)
             .ThenBy(l => l.Voucher.VoucherNo)
+            .ThenBy(l => l.Id);
+
+        var totalRecords = await query.CountAsync(ct);
+
+        decimal runningBalanceBeforePage = openingBalance;
+        if (page > 0)
+        {
+            var previousPageTotals = await orderedQuery
+                .Skip(0)
+                .Take(page * pageSize)
+                .Select(l => new { l.Debit, l.Credit })
+                .ToListAsync(ct);
+
+            runningBalanceBeforePage += previousPageTotals.Sum(x => x.Debit - x.Credit);
+        }
+
+        var lines = await orderedQuery
             .Skip(page * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
 
-        var entries = lines.Select(l => new MasterReportEntryDto
+        var runningBalance = runningBalanceBeforePage;
+        var entries = new List<MasterReportEntryDto>(lines.Count);
+
+        foreach (var line in lines)
         {
-            Date = l.Voucher.Date,
-            VoucherNo = l.Voucher.VoucherNo,
-            VoucherType = GetVoucherTypeLabel(l.Voucher.VoucherType),
-            Description = l.Description ?? l.Voucher.Description,
-            AccountName = l.Customer?.Name ?? l.Vendor?.Name ?? l.FreeText ?? "-",
-            AccountCategory = l.EntryType.ToString(),
-            ItemName = l.Item?.Name ?? (l.EntryType == EntryType.Expense ? l.FreeText : null),
-            Quantity = l.Quantity,
-            QuantityTypeLabel = l.QuantityType.HasValue
-                ? (l.QuantityType == QuantityType.PerPerson ? "Per Person" : "Per Kg")
-                : null,
-            Rate = l.Rate,
-            Debit = l.Debit,
-            Credit = l.Credit
-        }).ToList();
+            runningBalance += line.Debit - line.Credit;
+
+            entries.Add(new MasterReportEntryDto
+            {
+                Date = line.Voucher.Date,
+                VoucherNo = line.Voucher.VoucherNo,
+                VoucherType = GetVoucherTypeLabel(line.Voucher.VoucherType),
+                Description = line.Description ?? line.Voucher.Description,
+                AccountName = line.Customer?.Name ?? line.Vendor?.Name ?? line.FreeText ?? "-",
+                AccountCategory = line.EntryType.ToString(),
+                ItemName = line.Item?.Name ?? (line.EntryType == EntryType.Expense ? line.FreeText : null),
+                Quantity = line.Quantity,
+                QuantityTypeLabel = line.QuantityType.HasValue
+                    ? (line.QuantityType == QuantityType.PerPerson ? "Per Person" : "Per Kg")
+                    : null,
+                Rate = line.Rate,
+                Debit = line.Debit,
+                Credit = line.Credit,
+                RunningBalance = runningBalance
+            });
+        }
 
         return new MasterReportResponseDto
         {
@@ -167,7 +228,11 @@ public class ReportService : IReportService
             TotalRecords = totalRecords,
             HasMoreData = (page + 1) * pageSize < totalRecords,
             TotalDebit = entries.Sum(e => e.Debit),
-            TotalCredit = entries.Sum(e => e.Credit)
+            TotalCredit = entries.Sum(e => e.Credit),
+            HasOpeningBalance = hasOpeningBalance,
+            OpeningDebit = openingDebit,
+            OpeningCredit = openingCredit,
+            OpeningBalance = openingBalance
         };
     }
 
@@ -214,6 +279,18 @@ public class ReportService : IReportService
 
     private static decimal GetBalanceDelta(decimal debit, decimal credit, bool isCustomer)
         => isCustomer ? debit - credit : credit - debit;
+
+    private static DateTime? NormalizeUtcDate(DateTime? value)
+    {
+        if (!value.HasValue) return null;
+        var date = value.Value;
+        return date.Kind switch
+        {
+            DateTimeKind.Utc => date,
+            DateTimeKind.Local => date.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(date, DateTimeKind.Utc)
+        };
+    }
 
     private static string GetVoucherTypeLabel(VoucherType voucherType) => voucherType switch
     {

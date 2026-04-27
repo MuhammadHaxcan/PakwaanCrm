@@ -26,10 +26,24 @@ public class VouchersController : ControllerBase
         return result == null ? NotFound() : Ok(result);
     }
 
+    [HttpGet("by-number/{voucherNo}")]
+    public async Task<IActionResult> GetByVoucherNo(string voucherNo, CancellationToken ct)
+    {
+        var result = await _service.GetByVoucherNoAsync(voucherNo, ct);
+        return result == null ? NotFound(new { error = "Voucher not found." }) : Ok(result);
+    }
+
     [HttpPost("sales")]
     public async Task<IActionResult> CreateSales([FromBody] CreateSalesVoucherRequest request, CancellationToken ct)
     {
         var result = await _service.CreateSalesVoucherAsync(request, ct);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
+    }
+
+    [HttpPut("{id:int}/sales")]
+    public async Task<IActionResult> UpdateSales(int id, [FromBody] CreateSalesVoucherRequest request, CancellationToken ct)
+    {
+        var result = await _service.UpdateSalesVoucherAsync(id, request, ct);
         return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
     }
 
@@ -40,10 +54,24 @@ public class VouchersController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
     }
 
+    [HttpPut("{id:int}/general")]
+    public async Task<IActionResult> UpdateGeneral(int id, [FromBody] CreateGeneralVoucherRequest request, CancellationToken ct)
+    {
+        var result = await _service.UpdateGeneralVoucherAsync(id, request, ct);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
+    }
+
     [HttpPost("vendor-purchases")]
     public async Task<IActionResult> CreateVendorPurchase([FromBody] CreateVendorPurchaseRequest request, CancellationToken ct)
     {
         var result = await _service.CreateVendorPurchaseAsync(request, ct);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
+    }
+
+    [HttpPut("{id:int}/vendor-purchases")]
+    public async Task<IActionResult> UpdateVendorPurchase(int id, [FromBody] CreateVendorPurchaseRequest request, CancellationToken ct)
+    {
+        var result = await _service.UpdateVendorPurchaseAsync(id, request, ct);
         return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
     }
 

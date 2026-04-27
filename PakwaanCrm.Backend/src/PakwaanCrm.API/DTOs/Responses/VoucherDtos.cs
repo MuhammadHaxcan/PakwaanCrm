@@ -38,6 +38,13 @@ public class VoucherDetailDto
     public List<VoucherLineDto> Lines { get; set; } = new();
 }
 
+public class SalesVoucherCreateResultDto
+{
+    public int CreatedCount { get; set; }
+    public List<string> VoucherNos { get; set; } = new();
+    public List<VoucherDetailDto> Vouchers { get; set; } = new();
+}
+
 public class VoucherLineDto
 {
     public int Id { get; set; }

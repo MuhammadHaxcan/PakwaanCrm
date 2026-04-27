@@ -34,9 +34,6 @@ public class CreateVendorPurchaseRequest
     public int VendorId { get; set; }
     public string? Description { get; set; }
     public string? Notes { get; set; }
-    public decimal PaidAmount { get; set; }
-    public string? PaymentAccountName { get; set; }
-    public string? PaymentDescription { get; set; }
     public List<VendorPurchaseLineRequest> Lines { get; set; } = new();
 }
 

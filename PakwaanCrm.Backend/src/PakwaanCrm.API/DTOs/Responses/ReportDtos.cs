@@ -36,6 +36,7 @@ public class MasterReportEntryDto
     public decimal? Rate { get; set; }
     public decimal Debit { get; set; }
     public decimal Credit { get; set; }
+    public decimal RunningBalance { get; set; }
 }
 
 public class MasterReportResponseDto
@@ -45,6 +46,10 @@ public class MasterReportResponseDto
     public bool HasMoreData { get; set; }
     public decimal TotalDebit { get; set; }
     public decimal TotalCredit { get; set; }
+    public bool HasOpeningBalance { get; set; }
+    public decimal OpeningDebit { get; set; }
+    public decimal OpeningCredit { get; set; }
+    public decimal OpeningBalance { get; set; }
 }
 
 public class AccountBalanceDto

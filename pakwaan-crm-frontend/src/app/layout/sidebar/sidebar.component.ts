@@ -33,7 +33,11 @@ import { MatIconModule } from '@angular/material/icon';
         </a>
         <a class="nav-item" routerLink="/journal-voucher" routerLinkActive="nav-active">
           <div class="nav-icon-wrap"><mat-icon>menu_book</mat-icon></div>
-          <span>General Journal</span>
+          <span>Journal Voucher</span>
+        </a>
+        <a class="nav-item" routerLink="/voucher-lookup" routerLinkActive="nav-active">
+          <div class="nav-icon-wrap"><mat-icon>manage_search</mat-icon></div>
+          <span>Voucher Lookup</span>
         </a>
         <a class="nav-item" routerLink="/soa" routerLinkActive="nav-active">
           <div class="nav-icon-wrap"><mat-icon>account_balance_wallet</mat-icon></div>

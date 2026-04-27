@@ -1,19 +1,21 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, HostListener, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormArray, FormGroup, Validators } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatRadioModule } from '@angular/material/radio';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select/searchable-select.component';
 import { MasterDataService } from '../../core/services/master-data.service';
 import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
-import { Item, CreateSalesVoucherRequest } from '../../core/models/models';
-import { QuantityType } from '../../core/models/enums';
+import { Item, CreateSalesVoucherRequest, SalesVoucherCreateResult, VoucherDetail } from '../../core/models/models';
+import { EntryType, QuantityType, VoucherType } from '../../core/models/enums';
+import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
 import { forkJoin } from 'rxjs';
 
 @Component({
@@ -22,58 +24,67 @@ import { forkJoin } from 'rxjs';
   imports: [
     CommonModule, ReactiveFormsModule,
     MatCardModule, MatFormFieldModule, MatInputModule,
-    MatButtonModule, MatIconModule, MatRadioModule,
+    MatButtonModule, MatIconModule, MatDatepickerModule,
     MatTooltipModule, SearchableSelectComponent
   ],
   template: `
     <div class="page-container">
-
-      <!-- Page header -->
       <div class="page-header">
         <div class="ph-icon"><mat-icon>receipt_long</mat-icon></div>
         <div class="ph-text">
-          <h2>Sales Voucher</h2>
-          <p>Record catering sales to multiple customers in one voucher</p>
+          <h2>{{ isEditMode ? 'Edit Sales Voucher' : 'Sales Voucher' }}</h2>
+          <p>Record credit sales with customer-wise rows and credit total sales revenue</p>
+          <p *ngIf="isEditMode && voucherNo" style="margin-top:6px;font-weight:600;color:#3949ab">Voucher: {{ voucherNo }}</p>
         </div>
       </div>
 
       <mat-card>
         <mat-card-content style="padding:24px">
-
           <div *ngIf="loading" class="text-center" style="padding:32px;color:#94a3b8">
             <mat-icon style="font-size:36px;width:36px;height:36px;opacity:.4">hourglass_empty</mat-icon>
-            <p>Loading data…</p>
+            <p>Loading data...</p>
           </div>
 
-          <form *ngIf="!loading" [formGroup]="form" (ngSubmit)="onSubmit()">
+          <div *ngIf="!loading && loadError" class="text-red" style="padding:12px 0">{{ loadError }}</div>
 
-            <!-- Header fields -->
+          <form *ngIf="!loading && !loadError" [formGroup]="form" (ngSubmit)="onSubmit()">
             <div class="form-row">
               <mat-form-field appearance="outline">
                 <mat-label>Date</mat-label>
-                <input matInput type="date" formControlName="date" />
+                <input matInput [matDatepicker]="salesDatePicker" formControlName="date" placeholder="dd/mm/yyyy" />
+                <mat-datepicker-toggle matIconSuffix [for]="salesDatePicker"></mat-datepicker-toggle>
+                <mat-datepicker #salesDatePicker></mat-datepicker>
               </mat-form-field>
+
               <mat-form-field appearance="outline" style="flex:2">
                 <mat-label>Description</mat-label>
                 <input matInput formControlName="description" placeholder="e.g. Catering for wedding event" />
               </mat-form-field>
+            </div>
+
+            <div class="form-row">
               <mat-form-field appearance="outline" style="flex:2">
                 <mat-label>Notes</mat-label>
-                <input matInput formControlName="notes" placeholder="Optional notes…" />
+                <input matInput formControlName="notes" placeholder="Optional notes..." />
               </mat-form-field>
             </div>
 
-            <!-- Lines grid -->
+            <div style="font-size:12px;color:#64748b;margin:-6px 0 14px">
+              Add the customer on each row. This voucher records credit sales by debiting each customer receivable
+              row and crediting total sales revenue. Record customer receipts later in Journal.
+            </div>
+
             <div class="line-grid">
               <table>
                 <thead>
                   <tr>
-                    <th style="width:210px">Customer</th>
-                    <th style="width:190px">Item</th>
+                    <th style="width:220px">Customer</th>
+                    <th style="width:210px">Item</th>
                     <th style="width:130px">Unit</th>
                     <th style="width:90px">Qty</th>
                     <th style="width:100px">Rate (PKR)</th>
                     <th style="width:110px">Amount (PKR)</th>
+                    <th style="width:170px">Line Description</th>
                     <th style="width:44px"></th>
                   </tr>
                 </thead>
@@ -81,6 +92,7 @@ import { forkJoin } from 'rxjs';
                   <tr *ngFor="let line of linesArray.controls; let i = index" [formGroupName]="i">
                     <td>
                       <app-searchable-select
+                        #rowCustomerSelect
                         [options]="customerOptions"
                         placeholder="Select customer"
                         formControlName="customerId">
@@ -94,10 +106,10 @@ import { forkJoin } from 'rxjs';
                       </app-searchable-select>
                     </td>
                     <td>
-                      <mat-radio-group formControlName="quantityType" class="unit-group">
-                        <mat-radio-button [value]="0">Per Person</mat-radio-button>
-                        <mat-radio-button [value]="1">Per Kg</mat-radio-button>
-                      </mat-radio-group>
+                      <select class="inline-select" formControlName="quantityType">
+                        <option [value]="0">Per Person</option>
+                        <option [value]="1">Per Kg</option>
+                      </select>
                     </td>
                     <td>
                       <input type="number" class="inline-input w-fixed"
@@ -113,6 +125,9 @@ import { forkJoin } from 'rxjs';
                       <span class="amount-display">{{ getAmount(i) | number:'1.2-2' }}</span>
                     </td>
                     <td>
+                      <input class="inline-input w-full" formControlName="description" placeholder="Optional line note..." />
+                    </td>
+                    <td>
                       <button mat-icon-button type="button" color="warn"
                         [disabled]="linesArray.length === 1"
                         (click)="removeLine(i)" matTooltip="Remove row">
@@ -123,7 +138,7 @@ import { forkJoin } from 'rxjs';
                 </tbody>
                 <tfoot>
                   <tr class="total-row">
-                    <td colspan="5" class="text-right font-bold" style="padding-right:16px">Total Amount</td>
+                    <td colspan="6" class="text-right font-bold" style="padding-right:16px">Total Amount</td>
                     <td class="font-bold text-green" style="font-size:15px">{{ totalAmount | number:'1.2-2' }}</td>
                     <td></td>
                   </tr>
@@ -131,39 +146,34 @@ import { forkJoin } from 'rxjs';
               </table>
             </div>
 
-            <!-- Actions -->
             <div class="grid-actions">
-              <button mat-stroked-button type="button" color="primary" (click)="addLine()">
-                <mat-icon>add</mat-icon> Add Row
+              <button mat-stroked-button type="button" color="primary" (click)="addLineAndFocus()">
+                <mat-icon>add</mat-icon> Add New Row (Alt + N)
               </button>
               <span class="spacer"></span>
               <div *ngIf="error" class="text-red" style="font-size:13px">{{ error }}</div>
               <button mat-flat-button color="primary" type="submit"
-                [disabled]="submitting || form.invalid" style="padding:0 24px;height:40px">
+                [disabled]="submitting || form.invalid || (isEditMode && hasMixedCustomers)" style="padding:0 24px;height:40px">
                 <mat-icon *ngIf="!submitting" style="margin-right:6px">save</mat-icon>
-                {{ submitting ? 'Saving…' : 'Save Voucher' }}
+                {{ submitting ? 'Saving...' : (isEditMode ? 'Update Voucher' : 'Save Voucher') }}
               </button>
             </div>
-
           </form>
         </mat-card-content>
       </mat-card>
     </div>
   `,
   styles: [`
-    .unit-group {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      ::ng-deep .mat-mdc-radio-button .mdc-label { font-size: 12.5px; }
-    }
-  `]
+      `]
 })
 export class SalesVoucherComponent implements OnInit {
   private fb = inject(FormBuilder);
+  private route = inject(ActivatedRoute);
   private masterData = inject(MasterDataService);
   private api = inject(ApiService);
   private toast = inject(ToastService);
+  @ViewChildren(SearchableSelectComponent) private searchableSelects!: QueryList<SearchableSelectComponent>;
+  @ViewChildren('rowCustomerSelect') private rowCustomerSelects!: QueryList<SearchableSelectComponent>;
 
   form!: FormGroup;
   customerOptions: SelectOption[] = [];
@@ -172,23 +182,58 @@ export class SalesVoucherComponent implements OnInit {
   loading = true;
   submitting = false;
   error = '';
+  loadError = '';
+  isEditMode = false;
+  private voucherId: number | null = null;
+  voucherNo = '';
 
   ngOnInit() {
     this.form = this.fb.group({
-      date: [new Date().toISOString().split('T')[0], Validators.required],
+      date: [todayDate(), Validators.required],
       description: [''],
       notes: [''],
       lines: this.fb.array([this.createLineGroup()])
     });
 
-    forkJoin([
-      this.masterData.loadCustomers(),
-      this.masterData.loadItems()
-    ]).subscribe(([customers, items]) => {
-      this.customerOptions = customers.map(c => ({ id: c.id, name: c.name }));
-      this.items = items;
-      this.itemOptions = items.map(i => ({ id: i.id, name: `${i.name} (${i.unitLabel})` }));
-      this.loading = false;
+    const idParam = this.route.snapshot.paramMap.get('id');
+    this.isEditMode = !!idParam;
+    this.voucherId = idParam ? +idParam : null;
+
+    if (this.isEditMode && this.voucherId) {
+      forkJoin({
+        customers: this.masterData.loadCustomers(),
+        items: this.masterData.loadItems(),
+        voucher: this.api.get<VoucherDetail>(`/vouchers/${this.voucherId}`)
+      }).subscribe({
+        next: ({ customers, items, voucher }) => {
+          this.customerOptions = customers.map(c => ({ id: c.id, name: c.name }));
+          this.items = items;
+          this.itemOptions = items.map(i => ({ id: i.id, name: `${i.name} (${i.unitLabel})` }));
+          this.populateVoucher(voucher);
+          this.loading = false;
+        },
+        error: (err: Error) => {
+          this.loadError = err.message;
+          this.loading = false;
+        }
+      });
+      return;
+    }
+
+    forkJoin({
+      customers: this.masterData.loadCustomers(),
+      items: this.masterData.loadItems()
+    }).subscribe({
+      next: ({ customers, items }) => {
+        this.customerOptions = customers.map(c => ({ id: c.id, name: c.name }));
+        this.items = items;
+        this.itemOptions = items.map(i => ({ id: i.id, name: `${i.name} (${i.unitLabel})` }));
+        this.loading = false;
+      },
+      error: (err: Error) => {
+        this.loadError = err.message;
+        this.loading = false;
+      }
     });
   }
 
@@ -205,6 +250,14 @@ export class SalesVoucherComponent implements OnInit {
     return (+c.get('quantity')?.value || 0) * (+c.get('rate')?.value || 0);
   }
 
+  get hasMixedCustomers() {
+    const customerIds = this.linesArray.controls
+      .map(control => control.get('customerId')?.value)
+      .filter(value => value !== null && value !== undefined && value !== '');
+
+    return new Set(customerIds).size > 1;
+  }
+
   calcAmount(_i: number) { /* triggers CD */ }
 
   private onItemSelect(line: FormGroup) {
@@ -216,10 +269,10 @@ export class SalesVoucherComponent implements OnInit {
   private createLineGroup(): FormGroup {
     const line = this.fb.group({
       customerId: [null, Validators.required],
-      itemId:     [null, Validators.required],
+      itemId: [null, Validators.required],
       quantityType: [QuantityType.PerPerson, Validators.required],
       quantity: [null, [Validators.required, Validators.min(0.001)]],
-      rate:     [null, [Validators.required, Validators.min(0)]],
+      rate: [null, [Validators.required, Validators.min(0)]],
       description: ['']
     });
 
@@ -228,8 +281,59 @@ export class SalesVoucherComponent implements OnInit {
     return line;
   }
 
-  addLine()          { this.linesArray.push(this.createLineGroup()); }
+  private populateVoucher(voucher: VoucherDetail) {
+    if (voucher.voucherType !== VoucherType.Sales) {
+      this.loadError = 'This voucher is not a sales voucher.';
+      return;
+    }
+
+    const salesLines = voucher.lines.filter(line => line.entryType === EntryType.CustomerDebit);
+    if (salesLines.length === 0 || salesLines.some(line => !line.customerId)) {
+      this.loadError = 'Sales voucher lines could not be loaded.';
+      return;
+    }
+
+    this.voucherNo = voucher.voucherNo;
+    this.form.patchValue({
+      date: parseApiDate(voucher.date),
+      description: voucher.description ?? '',
+      notes: voucher.notes ?? ''
+    });
+
+    this.linesArray.clear();
+    salesLines.forEach(line => {
+      const group = this.createLineGroup();
+      group.patchValue({
+        customerId: line.customerId,
+        itemId: line.itemId,
+        quantityType: line.quantityType ?? QuantityType.PerPerson,
+        quantity: line.quantity,
+        rate: line.rate,
+        description: line.description ?? ''
+      }, { emitEvent: false });
+      this.linesArray.push(group);
+    });
+  }
+
+  addLine() { this.linesArray.push(this.createLineGroup()); }
+  addLineAndFocus() {
+    this.closeOpenDropdowns();
+    this.addLine();
+    setTimeout(() => this.rowCustomerSelects.last?.focus());
+  }
   removeLine(i: number) { if (this.linesArray.length > 1) this.linesArray.removeAt(i); }
+
+  @HostListener('document:keydown', ['$event'])
+  onShortcut(event: KeyboardEvent) {
+    if (event.altKey && event.key.toLowerCase() === 'n') {
+      event.preventDefault();
+      this.addLineAndFocus();
+    }
+  }
+
+  private closeOpenDropdowns() {
+    this.searchableSelects.forEach(select => select.closeDropdown());
+  }
 
   onSubmit() {
     if (this.form.invalid) return;
@@ -237,39 +341,47 @@ export class SalesVoucherComponent implements OnInit {
     this.error = '';
 
     const val = this.form.value;
+    const req: CreateSalesVoucherRequest = {
+      date: formatDateForApi(val.date),
+      description: val.description,
+      notes: val.notes,
+      lines: val.lines.map((l: any) => ({
+        customerId: +l.customerId,
+        itemId: +l.itemId,
+        quantityType: +l.quantityType,
+        quantity: +l.quantity,
+        rate: +l.rate,
+        description: l.description
+      }))
+    };
 
-    // Group lines by customerId — each customer gets their own voucher
-    const grouped = new Map<number, any[]>();
-    for (const l of val.lines) {
-      const cid = +l.customerId;
-      if (!grouped.has(cid)) grouped.set(cid, []);
-      grouped.get(cid)!.push(l);
+    if (this.isEditMode && this.voucherId) {
+      this.api.put<VoucherDetail>(`/vouchers/${this.voucherId}/sales`, req).subscribe({
+        next: updated => {
+          this.voucherNo = updated.voucherNo;
+          this.toast.success(`Updated voucher ${updated.voucherNo}`);
+          this.populateVoucher(updated);
+          this.submitting = false;
+        },
+        error: (err: Error) => {
+          this.error = err.message;
+          this.submitting = false;
+        }
+      });
+      return;
     }
 
-    const requests = Array.from(grouped.values()).map(lines => {
-      const req: CreateSalesVoucherRequest = {
-        date:        val.date,
-        description: val.description,
-        notes:       val.notes,
-        lines: lines.map((l: any) => ({
-          customerId:   +l.customerId,
-          itemId:       +l.itemId,
-          quantityType: +l.quantityType,
-          quantity:     +l.quantity,
-          rate:         +l.rate,
-          description:  l.description
-        }))
-      };
-      return this.api.post<any>('/vouchers/sales', req);
-    });
-
-    forkJoin(requests).subscribe({
-      next: results => {
-        const nums = results.map((r: any) => r.voucherNo).join(', ');
-        this.toast.success(`Saved! Voucher${results.length > 1 ? 's' : ''}: ${nums}`);
-        this.form.reset({ date: new Date().toISOString().split('T')[0] });
-        this.linesArray.clear();
-        this.linesArray.push(this.createLineGroup());
+    this.api.post<SalesVoucherCreateResult>('/vouchers/sales', req).subscribe({
+      next: created => {
+          this.voucherNo = created.voucherNos[0] ?? '';
+          this.toast.success(
+            created.createdCount === 1
+              ? `Saved! Voucher: ${created.voucherNos[0]}`
+              : `Saved ${created.createdCount} vouchers: ${created.voucherNos.join(', ')}`
+          );
+          this.form.reset({ date: todayDate() });
+          this.linesArray.clear();
+          this.linesArray.push(this.createLineGroup());
         this.submitting = false;
       },
       error: (err: Error) => {
