@@ -13,12 +13,13 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { forkJoin } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { MasterDataService } from '../../core/services/master-data.service';
-import { ReportExportService } from '../../core/services/report-export.service';
 import { SoaEntry, SoaResponse } from '../../core/models/models';
-import { formatDateForApi, formatDateForDisplay, parseDateInput } from '../../core/date/date-utils';
+import { formatDateForApi, parseDateInput } from '../../core/date/date-utils';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select/searchable-select.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { ACCOUNT_TYPE_OPTIONS } from '../../shared/constants/select-options';
+import { buildVoucherPrintRoute } from '../../core/utils/voucher-print.utils';
+import { buildSoaPrintUrl } from '../../core/utils/report-print.utils';
 
 @Component({
   selector: 'app-soa',
@@ -141,7 +142,11 @@ import { ACCOUNT_TYPE_OPTIONS } from '../../shared/constants/select-options';
                     </tr>
                     <tr *ngFor="let e of filteredEntries">
                       <td>{{ e.date | date:'dd/MM/yyyy' }}</td>
-                      <td><strong>{{ e.voucherNo }}</strong></td>
+                      <td>
+                        <a class="voucher-link" [href]="getVoucherPrintRoute(e.voucherType, e.voucherNo)" target="_blank" rel="noopener">
+                          <strong>{{ e.voucherNo }}</strong>
+                        </a>
+                      </td>
                       <td>
                         <span class="v-badge" [class.v-sales]="e.voucherType==='Sales'">{{ e.voucherType }}</span>
                       </td>
@@ -325,6 +330,17 @@ import { ACCOUNT_TYPE_OPTIONS } from '../../shared/constants/select-options';
       color: #0d47a1;
     }
 
+    .voucher-link {
+      color: #1b3f8b;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(27, 63, 139, 0.2);
+      transition: border-color .2s ease;
+    }
+
+    .voucher-link:hover {
+      border-color: rgba(27, 63, 139, 0.6);
+    }
+
     @media (max-width: 1200px) {
       .soa-filter-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -374,7 +390,6 @@ export class SoaComponent implements OnInit {
   private fb = inject(FormBuilder);
   private masterData = inject(MasterDataService);
   private api = inject(ApiService);
-  private exportService = inject(ReportExportService);
 
   filterForm!: FormGroup;
   accountOptions: SelectOption[] = [];
@@ -454,16 +469,16 @@ export class SoaComponent implements OnInit {
   }
 
   exportPdf() {
-    if (!this.soa) return;
-
-    this.exportService.exportSoaPdf({
-      soa: this.soa,
-      entries: this.filteredEntries,
-      filters: {
-        startDate: formatDateForDisplay(this.filterForm.get('startDate')?.value),
-        endDate: formatDateForDisplay(this.filterForm.get('endDate')?.value)
-      }
+    const accountType = this.filterForm.get('accountType')?.value;
+    const accountId = this.filterForm.get('accountId')?.value;
+    if (!accountType || !accountId) return;
+    const url = buildSoaPrintUrl({
+      accountType,
+      accountId,
+      startDate: formatDateForApi(this.filterForm.get('startDate')?.value),
+      endDate: formatDateForApi(this.filterForm.get('endDate')?.value)
     });
+    window.open(url, '_blank', 'noopener');
   }
 
   exportCsv() {
@@ -477,5 +492,9 @@ export class SoaComponent implements OnInit {
     anchor.href = URL.createObjectURL(blob);
     anchor.download = `SOA_${this.soa.accountName}_${new Date().toISOString().split('T')[0]}.csv`;
     anchor.click();
+  }
+
+  getVoucherPrintRoute(voucherType: string, voucherNo: string): string {
+    return buildVoucherPrintRoute(voucherType, voucherNo);
   }
 }

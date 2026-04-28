@@ -11,7 +11,12 @@ namespace PakwaanCrm.API.Controllers;
 public class ReportsController : ControllerBase
 {
     private readonly IReportService _service;
-    public ReportsController(IReportService service) => _service = service;
+    private readonly IReportPrintService _printService;
+    public ReportsController(IReportService service, IReportPrintService printService)
+    {
+        _service = service;
+        _printService = printService;
+    }
 
     [HttpGet("soa")]
     public async Task<IActionResult> GetSoa(
@@ -40,4 +45,49 @@ public class ReportsController : ControllerBase
     [HttpGet("balances")]
     public async Task<IActionResult> GetBalances(CancellationToken ct)
         => Ok(await _service.GetBalancesAsync(ct));
+
+    [HttpGet("print/soa")]
+    public async Task<IActionResult> PrintSoa(
+        [FromQuery] string accountType,
+        [FromQuery] int accountId,
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(accountType) || accountId <= 0)
+            return BadRequest(new { error = "accountType and accountId are required." });
+        if (!accountType.Equals("Customer", StringComparison.OrdinalIgnoreCase)
+            && !accountType.Equals("Vendor", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "accountType must be either Customer or Vendor." });
+        if (startDate.HasValue && endDate.HasValue && startDate.Value.Date > endDate.Value.Date)
+            return BadRequest(new { error = "startDate cannot be after endDate." });
+
+        var result = await _printService.GenerateSoaPdfAsync(accountType, accountId, startDate, endDate, ct);
+        if (!result.IsSuccess || result.Value is null)
+        {
+            if (result.Error.Equals("Account not found.", StringComparison.OrdinalIgnoreCase))
+                return NotFound(new { error = result.Error });
+            return BadRequest(new { error = result.Error });
+        }
+
+        return File(result.Value.Content, result.Value.ContentType, result.Value.FileName);
+    }
+
+    [HttpGet("print/master")]
+    public async Task<IActionResult> PrintMaster(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate,
+        [FromQuery] int? customerId,
+        [FromQuery] int? vendorId,
+        [FromQuery] int? voucherType,
+        CancellationToken ct)
+    {
+        if (startDate.HasValue && endDate.HasValue && startDate.Value.Date > endDate.Value.Date)
+            return BadRequest(new { error = "startDate cannot be after endDate." });
+        var result = await _printService.GenerateMasterReportPdfAsync(startDate, endDate, customerId, vendorId, voucherType, ct);
+        if (!result.IsSuccess || result.Value is null)
+            return BadRequest(new { error = result.Error });
+
+        return File(result.Value.Content, result.Value.ContentType, result.Value.FileName);
+    }
 }

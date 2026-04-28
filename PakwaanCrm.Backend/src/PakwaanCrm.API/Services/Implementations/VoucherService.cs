@@ -208,8 +208,7 @@ public class VoucherService : IVoucherService
     {
         var voucher = await _repo.GetByIdAsync(id, ct);
         if (voucher == null) return Result.Failure("Voucher not found.");
-        _repo.Delete(voucher);
-        await _repo.SaveChangesAsync(ct);
+        await _repo.DeleteAsync(voucher, ct);
         return Result.Success();
     }
 
@@ -242,6 +241,12 @@ public class VoucherService : IVoucherService
 
         if (request.Lines.Any(line => line.Debit < 0 || line.Credit < 0))
             return Result.Failure("Debit and credit must be zero or positive.");
+
+        if (request.Lines.Any(line => line.Debit > 0 && line.Credit > 0))
+            return Result.Failure("A journal line cannot have both debit and credit.");
+
+        if (request.Lines.Any(line => line.Debit == 0 && line.Credit == 0))
+            return Result.Failure("Each journal line must have either a debit or a credit amount.");
 
         return Result.Success();
     }

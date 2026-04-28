@@ -12,7 +12,12 @@ namespace PakwaanCrm.API.Controllers;
 public class VouchersController : ControllerBase
 {
     private readonly IVoucherService _service;
-    public VouchersController(IVoucherService service) => _service = service;
+    private readonly IVoucherPrintService _printService;
+    public VouchersController(IVoucherService service, IVoucherPrintService printService)
+    {
+        _service = service;
+        _printService = printService;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetList(
@@ -35,6 +40,18 @@ public class VouchersController : ControllerBase
         var result = await _service.GetByVoucherNoAsync(voucherNo, ct);
         return result == null ? NotFound(new { error = "Voucher not found." }) : Ok(result);
     }
+
+    [HttpGet("print/sale/{voucherNo}")]
+    public async Task<IActionResult> PrintSaleVoucher(string voucherNo, CancellationToken ct)
+        => await PrintVoucher(voucherNo, VoucherType.Sales, ct);
+
+    [HttpGet("print/purchase/{voucherNo}")]
+    public async Task<IActionResult> PrintPurchaseVoucher(string voucherNo, CancellationToken ct)
+        => await PrintVoucher(voucherNo, VoucherType.Purchase, ct);
+
+    [HttpGet("print/journal/{voucherNo}")]
+    public async Task<IActionResult> PrintJournalVoucher(string voucherNo, CancellationToken ct)
+        => await PrintVoucher(voucherNo, VoucherType.General, ct);
 
     [HttpPost("sales")]
     public async Task<IActionResult> CreateSales([FromBody] CreateSalesVoucherRequest request, CancellationToken ct)
@@ -83,5 +100,19 @@ public class VouchersController : ControllerBase
     {
         var result = await _service.DeleteAsync(id, ct);
         return result.IsSuccess ? Ok() : BadRequest(new { error = result.Error });
+    }
+
+    private async Task<IActionResult> PrintVoucher(string voucherNo, VoucherType expectedType, CancellationToken ct)
+    {
+        var result = await _printService.GenerateVoucherPdfAsync(voucherNo, expectedType, ct);
+        if (!result.IsSuccess || result.Value is null)
+        {
+            if (result.Error.Equals("Voucher not found.", StringComparison.OrdinalIgnoreCase))
+                return NotFound(new { error = result.Error });
+
+            return BadRequest(new { error = result.Error });
+        }
+
+        return File(result.Value.Content, result.Value.ContentType, result.Value.FileName);
     }
 }

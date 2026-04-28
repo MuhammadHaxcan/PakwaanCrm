@@ -16,11 +16,12 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { MasterDataService } from '../../core/services/master-data.service';
 import { ApiService } from '../../core/services/api.service';
-import { ReportExportService } from '../../core/services/report-export.service';
 import { AccountBalance, MasterReportEntry, MasterReportResponse } from '../../core/models/models';
-import { formatDateForApi, formatDateForDisplay, parseDateInput } from '../../core/date/date-utils';
+import { formatDateForApi, parseDateInput } from '../../core/date/date-utils';
 import { forkJoin } from 'rxjs';
 import { VOUCHER_TYPE_FILTER_OPTIONS } from '../../shared/constants/select-options';
+import { buildVoucherPrintRoute } from '../../core/utils/voucher-print.utils';
+import { buildMasterReportPrintUrl } from '../../core/utils/report-print.utils';
 
 @Component({
   selector: 'app-master-report',
@@ -171,7 +172,11 @@ import { VOUCHER_TYPE_FILTER_OPTIONS } from '../../shared/constants/select-optio
                         </tr>
                         <tr *ngFor="let e of filteredEntries">
                           <td *ngIf="visibleCols['date']">{{ e.date | date:'dd/MM/yyyy' }}</td>
-                          <td *ngIf="visibleCols['voucherNo']"><strong>{{ e.voucherNo }}</strong></td>
+                          <td *ngIf="visibleCols['voucherNo']">
+                            <a class="voucher-link" [href]="getVoucherPrintRoute(e.voucherType, e.voucherNo)" target="_blank" rel="noopener">
+                              <strong>{{ e.voucherNo }}</strong>
+                            </a>
+                          </td>
                           <td *ngIf="visibleCols['voucherType']">
                             <span class="v-badge" [class.v-sales]="e.voucherType==='Sales'">{{ e.voucherType }}</span>
                           </td>
@@ -418,6 +423,17 @@ import { VOUCHER_TYPE_FILTER_OPTIONS } from '../../shared/constants/select-optio
     }
     .v-badge.v-sales { background: #e3f2fd; color: #0d47a1; }
 
+    .voucher-link {
+      color: #1b3f8b;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(27, 63, 139, 0.2);
+      transition: border-color .2s ease;
+    }
+
+    .voucher-link:hover {
+      border-color: rgba(27, 63, 139, 0.6);
+    }
+
     @media (max-width: 1280px) {
       .master-filter-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -465,7 +481,6 @@ import { VOUCHER_TYPE_FILTER_OPTIONS } from '../../shared/constants/select-optio
 export class MasterReportComponent implements OnInit {
   private masterData = inject(MasterDataService);
   private api = inject(ApiService);
-  private exportService = inject(ReportExportService);
 
   customerOptions: SelectOption[] = [];
   vendorOptions: SelectOption[] = [];
@@ -594,24 +609,14 @@ export class MasterReportComponent implements OnInit {
   }
 
   exportPdf() {
-    this.exportService.exportMasterReportPdf({
-      entries: this.filteredEntries,
-      visibleCols: this.visibleCols,
-      totalRecords: this.totalRecords,
-      totalDebit: this.totalDebit,
-      totalCredit: this.totalCredit,
-      hasOpeningBalance: this.hasOpeningBalance,
-      openingDebit: this.openingDebit,
-      openingCredit: this.openingCredit,
-      openingBalance: this.openingBalance,
-      filters: {
-        startDate: formatDateForDisplay(this.filters.startDate),
-        endDate: formatDateForDisplay(this.filters.endDate),
-        customerName: this.getSelectedOptionName(this.customerOptions, this.filters.customerId),
-        vendorName: this.getSelectedOptionName(this.vendorOptions, this.filters.vendorId),
-        voucherTypeLabel: this.getVoucherTypeLabel(this.voucherTypeFilter)
-      }
+    const url = buildMasterReportPrintUrl({
+      startDate: formatDateForApi(this.filters.startDate),
+      endDate: formatDateForApi(this.filters.endDate),
+      customerId: this.filters.customerId,
+      vendorId: this.filters.vendorId,
+      voucherType: this.voucherTypeFilter
     });
+    window.open(url, '_blank', 'noopener');
   }
 
   exportCsv() {
@@ -643,5 +648,9 @@ export class MasterReportComponent implements OnInit {
     if (type === 1) return 'Journal';
     if (type === 2) return 'Purchase';
     return '';
+  }
+
+  getVoucherPrintRoute(voucherType: string, voucherNo: string): string {
+    return buildVoucherPrintRoute(voucherType, voucherNo);
   }
 }

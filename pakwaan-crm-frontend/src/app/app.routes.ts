@@ -67,5 +67,35 @@ export const routes: Routes = [
       },
     ]
   },
+  {
+    path: 'print-sale-voucher/:voucherNo',
+    title: 'Print Sales Voucher',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/print-voucher/print-voucher-page.component').then(m => m.PrintVoucherPageComponent)
+  },
+  {
+    path: 'print-purchase-voucher/:voucherNo',
+    title: 'Print Purchase Voucher',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/print-voucher/print-voucher-page.component').then(m => m.PrintVoucherPageComponent)
+  },
+  {
+    path: 'print-journal-voucher/:voucherNo',
+    title: 'Print Journal Voucher',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/print-voucher/print-voucher-page.component').then(m => m.PrintVoucherPageComponent)
+  },
+  {
+    path: 'print-soa',
+    title: 'Print SOA',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/print-report/print-report-page.component').then(m => m.PrintReportPageComponent)
+  },
+  {
+    path: 'print-master-report',
+    title: 'Print Master Report',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/print-report/print-report-page.component').then(m => m.PrintReportPageComponent)
+  },
   { path: '**', redirectTo: 'login' }
 ];

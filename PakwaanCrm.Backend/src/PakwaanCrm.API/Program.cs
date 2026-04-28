@@ -15,9 +15,11 @@ using PakwaanCrm.API.Repositories.Implementations;
 using PakwaanCrm.API.Repositories.Interfaces;
 using PakwaanCrm.API.Services.Implementations;
 using PakwaanCrm.API.Services.Interfaces;
+using QuestPDF.Infrastructure;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+QuestPDF.Settings.License = LicenseType.Community;
 
 // Database
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -66,7 +68,9 @@ builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IVendorService, VendorService>();
 builder.Services.AddScoped<IItemService, ItemService>();
 builder.Services.AddScoped<IVoucherService, VoucherService>();
+builder.Services.AddScoped<IVoucherPrintService, VoucherPrintService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IReportPrintService, ReportPrintService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();

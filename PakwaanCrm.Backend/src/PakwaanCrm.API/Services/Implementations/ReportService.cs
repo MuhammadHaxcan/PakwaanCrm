@@ -145,6 +145,7 @@ public class ReportService : IReportService
 
         decimal openingDebit = 0, openingCredit = 0;
         bool hasOpeningBalance = false;
+        decimal openingBalance = 0;
 
         if (fromDate.HasValue)
         {
@@ -166,28 +167,16 @@ public class ReportService : IReportService
                 .Select(l => new { l.Debit, l.Credit, l.CustomerId, l.VendorId })
                 .ToListAsync(ct);
 
-            // For customers: debit increases balance (debit - credit)
-            // For vendors: credit increases balance (credit - debit)
-            openingDebit = openingTotals
-                .Where(l => l.CustomerId.HasValue)
-                .Sum(l => l.Debit);
-            openingCredit = openingTotals
-                .Where(l => l.CustomerId.HasValue)
-                .Sum(l => l.Credit);
-
-            var vendorOpeningDebit = openingTotals
-                .Where(l => l.VendorId.HasValue)
-                .Sum(l => l.Debit);
-            var vendorOpeningCredit = openingTotals
-                .Where(l => l.VendorId.HasValue)
-                .Sum(l => l.Credit);
-
-            openingDebit += vendorOpeningDebit;
-            openingCredit += vendorOpeningCredit;
+            openingDebit = openingTotals.Sum(l => l.Debit);
+            openingCredit = openingTotals.Sum(l => l.Credit);
+            openingBalance = openingTotals.Sum(line =>
+            {
+                if (line.CustomerId.HasValue) return line.Debit - line.Credit;
+                if (line.VendorId.HasValue) return line.Credit - line.Debit;
+                return line.Debit - line.Credit;
+            });
             hasOpeningBalance = true;
         }
-
-        var openingBalance = openingDebit - openingCredit;
         var orderedQuery = query
             .OrderBy(l => l.Voucher.Date)
             .ThenBy(l => l.Voucher.VoucherNo)
