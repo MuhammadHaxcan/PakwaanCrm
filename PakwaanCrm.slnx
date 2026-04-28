@@ -1,2 +1,7 @@
 <Solution>
+  <Project Path="PakwaanCrm.Backend/src/PakwaanCrm.API/PakwaanCrm.API.csproj" />
+  <Project Path="pakwaan-crm-frontend/pakwaan-crm-frontend.esproj">
+    <Build />
+    <Deploy />
+  </Project>
 </Solution>
