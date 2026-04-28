@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Observable, take, tap } from 'rxjs';
-import { Customer, Item, Vendor } from '../models/models';
+import { Account, Customer, Item, Vendor } from '../models/models';
 import { ApiService } from './api.service';
 
 @Injectable({ providedIn: 'root' })
@@ -10,8 +10,9 @@ export class MasterDataService {
   readonly customers$ = new BehaviorSubject<Customer[]>([]);
   readonly vendors$ = new BehaviorSubject<Vendor[]>([]);
   readonly items$ = new BehaviorSubject<Item[]>([]);
+  readonly accounts$ = new BehaviorSubject<Account[]>([]);
 
-  private loaded = { customers: false, vendors: false, items: false };
+  private loaded = { customers: false, vendors: false, items: false, accounts: false };
 
   loadCustomers(force = false): Observable<Customer[]> {
     if (this.loaded.customers && !force) return this.customers$.pipe(take(1));
@@ -34,7 +35,14 @@ export class MasterDataService {
     );
   }
 
+  loadAccounts(force = false): Observable<Account[]> {
+    if (this.loaded.accounts && !force) return this.accounts$.pipe(take(1));
+    return this.api.get<Account[]>('/accounts').pipe(
+      tap(data => { this.accounts$.next(data); this.loaded.accounts = true; })
+    );
+  }
+
   reload() {
-    this.loaded = { customers: false, vendors: false, items: false };
+    this.loaded = { customers: false, vendors: false, items: false, accounts: false };
   }
 }

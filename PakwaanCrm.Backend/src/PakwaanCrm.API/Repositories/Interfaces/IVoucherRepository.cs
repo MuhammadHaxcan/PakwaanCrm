@@ -9,4 +9,5 @@ public interface IVoucherRepository : IRepository<Voucher>
     Task<List<Voucher>> GetListWithLinesAsync(int? voucherType, int page, int pageSize, CancellationToken ct = default);
     Task<string> GenerateVoucherNumberAsync(string prefix, CancellationToken ct = default);
     void RemoveLines(IEnumerable<VoucherLine> lines);
+    Task DeleteAsync(Voucher voucher, CancellationToken ct = default);
 }

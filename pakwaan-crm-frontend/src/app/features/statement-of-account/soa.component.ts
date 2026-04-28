@@ -8,7 +8,6 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { forkJoin } from 'rxjs';
@@ -19,6 +18,7 @@ import { SoaEntry, SoaResponse } from '../../core/models/models';
 import { formatDateForApi, formatDateForDisplay, parseDateInput } from '../../core/date/date-utils';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select/searchable-select.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
+import { ACCOUNT_TYPE_OPTIONS } from '../../shared/constants/select-options';
 
 @Component({
   selector: 'app-soa',
@@ -26,7 +26,7 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
   imports: [
     CommonModule, ReactiveFormsModule, FormsModule,
     MatCardModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatIconModule,
+    MatButtonModule, MatIconModule,
     MatTableModule, MatDividerModule, MatTooltipModule, MatDatepickerModule,
     SearchableSelectComponent, LoadingSpinnerComponent
   ],
@@ -46,13 +46,13 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
           <div class="filter-panel">
             <form [formGroup]="filterForm" (ngSubmit)="generate()">
               <div class="soa-filter-grid">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="soa-filter-field soa-account-type-field">
-                  <mat-label>Account Type</mat-label>
-                  <mat-select formControlName="accountType">
-                    <mat-option value="Customer">Customer</mat-option>
-                    <mat-option value="Vendor">Vendor</mat-option>
-                  </mat-select>
-                </mat-form-field>
+                <app-searchable-select
+                  class="soa-filter-field soa-filter-select-field soa-account-type-field"
+                  label="Account Type"
+                  [options]="accountTypeOptions"
+                  placeholder="Select type..."
+                  formControlName="accountType">
+                </app-searchable-select>
 
                 <app-searchable-select
                   class="soa-filter-field soa-filter-select-field"
@@ -378,6 +378,7 @@ export class SoaComponent implements OnInit {
 
   filterForm!: FormGroup;
   accountOptions: SelectOption[] = [];
+  accountTypeOptions: SelectOption[] = ACCOUNT_TYPE_OPTIONS;
   private customers: SelectOption[] = [];
   private vendors: SelectOption[] = [];
 

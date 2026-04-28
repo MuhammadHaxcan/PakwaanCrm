@@ -4,8 +4,9 @@ import { catchError, throwError } from 'rxjs';
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   return next(req).pipe(
     catchError(err => {
-      const message = err?.error?.error ?? err?.message ?? 'An unexpected error occurred.';
-      return throwError(() => new Error(message));
+      // Preserve HttpErrorResponse so upstream interceptors (e.g. auth refresh on 401)
+      // can still read status and other response metadata.
+      return throwError(() => err);
     })
   );
 };

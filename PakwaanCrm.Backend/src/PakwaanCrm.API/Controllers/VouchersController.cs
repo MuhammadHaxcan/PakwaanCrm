@@ -1,11 +1,14 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PakwaanCrm.API.DTOs.Requests;
+using PakwaanCrm.API.Enums;
 using PakwaanCrm.API.Services.Interfaces;
 
 namespace PakwaanCrm.API.Controllers;
 
 [ApiController]
 [Route("api/vouchers")]
+[Authorize(Roles = $"{nameof(UserRole.Admin)},{nameof(UserRole.Staff)}")]
 public class VouchersController : ControllerBase
 {
     private readonly IVoucherService _service;

@@ -1,12 +1,15 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { AuthService } from '../../core/services/auth.service';
 
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [RouterModule, MatListModule, MatIconModule],
+  imports: [CommonModule, RouterModule, MatListModule, MatIconModule, MatButtonModule],
   template: `
     <div class="sidebar-wrap">
       <!-- Logo -->
@@ -51,15 +54,18 @@ import { MatIconModule } from '@angular/material/icon';
         <div class="nav-divider"></div>
         <div class="nav-section-label" style="padding-left:20px">SETUP</div>
 
-        <a class="nav-item" routerLink="/master-data" routerLinkActive="nav-active">
+        <a class="nav-item" routerLink="/master-data" routerLinkActive="nav-active" *ngIf="isAdmin()">
           <div class="nav-icon-wrap"><mat-icon>manage_accounts</mat-icon></div>
           <span>Master Data</span>
         </a>
       </nav>
 
       <div class="sidebar-footer">
-        <mat-icon style="font-size:16px;width:16px;height:16px;opacity:.5">copyright</mat-icon>
-        <span>2025 Pakwaan CRM</span>
+        <div class="user-meta">
+          <div class="user-name">{{ auth.currentUser?.displayName || auth.currentUser?.username }}</div>
+          <div class="user-role">{{ auth.currentUser?.role }}</div>
+        </div>
+        <button mat-stroked-button class="logout-btn" (click)="logout()">Logout</button>
       </div>
     </div>
   `,
@@ -157,11 +163,52 @@ import { MatIconModule } from '@angular/material/icon';
       padding: 14px 20px;
       display: flex;
       align-items: center;
-      gap: 6px;
+      justify-content: space-between;
       border-top: 1px solid rgba(255,255,255,.1);
-      color: rgba(255,255,255,.35);
+      gap: 8px;
+    }
+
+    .user-meta {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .user-name {
+      color: rgba(255,255,255,.95);
+      font-size: 12px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 140px;
+    }
+
+    .user-role {
+      color: rgba(255,255,255,.6);
       font-size: 11px;
+    }
+
+    .logout-btn {
+      color: #fff;
+      border-color: rgba(255,255,255,.4);
+      min-width: auto;
+      padding: 0 10px;
+      height: 30px;
     }
   `]
 })
-export class SidebarComponent {}
+export class SidebarComponent {
+  readonly auth = inject(AuthService);
+
+  isAdmin(): boolean {
+    return this.auth.isAdmin();
+  }
+
+  logout(): void {
+    this.auth.logout().subscribe({
+      next: () => this.auth.forceLogoutToLogin('/'),
+      error: () => this.auth.forceLogoutToLogin('/')
+    });
+  }
+}

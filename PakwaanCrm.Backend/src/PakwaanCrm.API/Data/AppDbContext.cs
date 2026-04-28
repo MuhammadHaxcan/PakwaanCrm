@@ -12,6 +12,9 @@ public class AppDbContext : DbContext
     public DbSet<Item> Items => Set<Item>();
     public DbSet<Voucher> Vouchers => Set<Voucher>();
     public DbSet<VoucherLine> VoucherLines => Set<VoucherLine>();
+    public DbSet<AppUser> AppUsers => Set<AppUser>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Account> Accounts => Set<Account>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -23,6 +26,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Item>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Voucher>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<VoucherLine>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<AppUser>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Account>().HasQueryFilter(e => !e.IsDeleted);
 
         // Decimal precision
         modelBuilder.Entity<Customer>().Property(e => e.OpeningBalance).HasPrecision(18, 2);
@@ -36,6 +41,8 @@ public class AppDbContext : DbContext
 
         // Unique index on VoucherNo
         modelBuilder.Entity<Voucher>().HasIndex(e => e.VoucherNo).IsUnique();
+        modelBuilder.Entity<AppUser>().HasIndex(e => e.Username).IsUnique();
+        modelBuilder.Entity<RefreshToken>().HasIndex(e => e.TokenHash).IsUnique();
 
         // Voucher → Lines
         modelBuilder.Entity<VoucherLine>()
@@ -64,5 +71,18 @@ public class AppDbContext : DbContext
             .WithMany(i => i.VoucherLines)
             .HasForeignKey(l => l.ItemId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // VoucherLine → Account (nullable)
+        modelBuilder.Entity<VoucherLine>()
+            .HasOne(l => l.Account)
+            .WithMany(a => a.VoucherLines)
+            .HasForeignKey(l => l.AccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RefreshToken>()
+            .HasOne(rt => rt.AppUser)
+            .WithMany(u => u.RefreshTokens)
+            .HasForeignKey(rt => rt.AppUserId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

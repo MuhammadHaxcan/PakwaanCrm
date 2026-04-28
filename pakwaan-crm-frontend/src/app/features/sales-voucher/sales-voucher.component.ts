@@ -17,6 +17,7 @@ import { Item, CreateSalesVoucherRequest, SalesVoucherCreateResult, VoucherDetai
 import { EntryType, QuantityType, VoucherType } from '../../core/models/enums';
 import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
 import { forkJoin } from 'rxjs';
+import { QUANTITY_TYPE_OPTIONS } from '../../shared/constants/select-options';
 
 @Component({
   selector: 'app-sales-voucher',
@@ -54,11 +55,6 @@ import { forkJoin } from 'rxjs';
                 <input matInput [matDatepicker]="salesDatePicker" formControlName="date" placeholder="dd/mm/yyyy" />
                 <mat-datepicker-toggle matIconSuffix [for]="salesDatePicker"></mat-datepicker-toggle>
                 <mat-datepicker #salesDatePicker></mat-datepicker>
-              </mat-form-field>
-
-              <mat-form-field appearance="outline" style="flex:2">
-                <mat-label>Description</mat-label>
-                <input matInput formControlName="description" placeholder="e.g. Catering for wedding event" />
               </mat-form-field>
             </div>
 
@@ -106,10 +102,11 @@ import { forkJoin } from 'rxjs';
                       </app-searchable-select>
                     </td>
                     <td>
-                      <select class="inline-select" formControlName="quantityType">
-                        <option [value]="0">Per Person</option>
-                        <option [value]="1">Per Kg</option>
-                      </select>
+                      <app-searchable-select
+                        [options]="quantityTypeOptions"
+                        placeholder="Unit"
+                        formControlName="quantityType">
+                      </app-searchable-select>
                     </td>
                     <td>
                       <input type="number" class="inline-input w-fixed"
@@ -178,6 +175,7 @@ export class SalesVoucherComponent implements OnInit {
   form!: FormGroup;
   customerOptions: SelectOption[] = [];
   itemOptions: SelectOption[] = [];
+  quantityTypeOptions: SelectOption[] = QUANTITY_TYPE_OPTIONS;
   private items: Item[] = [];
   loading = true;
   submitting = false;
@@ -190,7 +188,6 @@ export class SalesVoucherComponent implements OnInit {
   ngOnInit() {
     this.form = this.fb.group({
       date: [todayDate(), Validators.required],
-      description: [''],
       notes: [''],
       lines: this.fb.array([this.createLineGroup()])
     });
@@ -296,7 +293,6 @@ export class SalesVoucherComponent implements OnInit {
     this.voucherNo = voucher.voucherNo;
     this.form.patchValue({
       date: parseApiDate(voucher.date),
-      description: voucher.description ?? '',
       notes: voucher.notes ?? ''
     });
 
@@ -343,7 +339,6 @@ export class SalesVoucherComponent implements OnInit {
     const val = this.form.value;
     const req: CreateSalesVoucherRequest = {
       date: formatDateForApi(val.date),
-      description: val.description,
       notes: val.notes,
       lines: val.lines.map((l: any) => ({
         customerId: +l.customerId,

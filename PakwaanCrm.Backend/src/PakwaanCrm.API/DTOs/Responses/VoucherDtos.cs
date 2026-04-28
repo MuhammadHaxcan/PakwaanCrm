@@ -54,6 +54,8 @@ public class VoucherLineDto
     public string? CustomerName { get; set; }
     public int? VendorId { get; set; }
     public string? VendorName { get; set; }
+    public int? AccountId { get; set; }
+    public string? AccountName { get; set; }
     public string? FreeText { get; set; }
     public int? ItemId { get; set; }
     public string? ItemName { get; set; }

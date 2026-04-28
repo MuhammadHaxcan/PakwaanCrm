@@ -1,4 +1,4 @@
-import { Component, ElementRef, HostListener, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
+import { Component, HostListener, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { ReactiveFormsModule, FormArray, FormBuilder, FormGroup, Validators } from '@angular/forms';
@@ -17,6 +17,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { CreateVendorPurchaseRequest, Item, VoucherDetail } from '../../core/models/models';
 import { EntryType, QuantityType, VoucherType } from '../../core/models/enums';
 import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
+import { QUANTITY_TYPE_OPTIONS } from '../../shared/constants/select-options';
 
 @Component({
   selector: 'app-vendor-purchase',
@@ -69,11 +70,6 @@ import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-
                 placeholder="Select vendor"
                 formControlName="vendorId">
               </app-searchable-select>
-
-              <mat-form-field appearance="outline" style="flex:1.8">
-                <mat-label>Description</mat-label>
-                <input matInput formControlName="description" placeholder="e.g. Gas supply bill" />
-              </mat-form-field>
             </div>
 
             <div class="form-row">
@@ -108,16 +104,19 @@ import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-
                 <tbody formArrayName="lines">
                   <tr *ngFor="let line of linesArray.controls; let i = index" [formGroupName]="i">
                     <td>
-                      <input #rowItemInput class="inline-input w-full"
-                        formControlName="itemName"
-                        [attr.list]="itemListId"
-                        placeholder="Select or type service" />
+                      <app-searchable-select
+                        #rowItemSelect
+                        [options]="itemSelectOptions"
+                        placeholder="Select item/service"
+                        formControlName="itemId">
+                      </app-searchable-select>
                     </td>
                     <td>
-                      <select class="inline-select" formControlName="quantityType">
-                        <option [value]="0">Per Person</option>
-                        <option [value]="1">Per Kg</option>
-                      </select>
+                      <app-searchable-select
+                        [options]="quantityTypeOptions"
+                        placeholder="Unit"
+                        formControlName="quantityType">
+                      </app-searchable-select>
                     </td>
                     <td>
                       <input type="number" class="inline-input w-fixed" formControlName="quantity" min="0.001" step="0.001" />
@@ -151,10 +150,6 @@ import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-
               </table>
             </div>
 
-            <datalist [id]="itemListId">
-              <option *ngFor="let item of itemOptions" [value]="item.name"></option>
-            </datalist>
-
             <div class="grid-actions">
               <button mat-stroked-button type="button" color="primary" (click)="addLineAndFocus()">
                 <mat-icon>add</mat-icon> Add New Row (Alt + N)
@@ -181,12 +176,13 @@ export class VendorPurchaseComponent implements OnInit {
   private masterData = inject(MasterDataService);
   private toast = inject(ToastService);
   @ViewChildren(SearchableSelectComponent) private searchableSelects!: QueryList<SearchableSelectComponent>;
-  @ViewChildren('rowItemInput') private rowItemInputs!: QueryList<ElementRef<HTMLInputElement>>;
+  @ViewChildren('rowItemSelect') private rowItemSelects!: QueryList<SearchableSelectComponent>;
 
   form!: FormGroup;
   vendorOptions: SelectOption[] = [];
   itemOptions: Item[] = [];
-  readonly itemListId = 'vendor-purchase-item-options';
+  itemSelectOptions: SelectOption[] = [];
+  quantityTypeOptions: SelectOption[] = QUANTITY_TYPE_OPTIONS;
   loading = true;
   submitting = false;
   error = '';
@@ -199,7 +195,6 @@ export class VendorPurchaseComponent implements OnInit {
     this.form = this.fb.group({
       date: [todayDate(), Validators.required],
       vendorId: [null, Validators.required],
-      description: [''],
       notes: [''],
       lines: this.fb.array([this.createLineGroup()])
     });
@@ -217,6 +212,7 @@ export class VendorPurchaseComponent implements OnInit {
         next: ({ vendors, items, voucher }) => {
           this.vendorOptions = vendors.map(v => ({ id: v.id, name: v.name }));
           this.itemOptions = items;
+          this.itemSelectOptions = items.map(i => ({ id: i.id, name: `${i.name} (${i.unitLabel})` }));
           this.populateVoucher(voucher);
           this.loading = false;
         },
@@ -235,6 +231,7 @@ export class VendorPurchaseComponent implements OnInit {
       next: ({ vendors, items }) => {
         this.vendorOptions = vendors.map(v => ({ id: v.id, name: v.name }));
         this.itemOptions = items;
+        this.itemSelectOptions = items.map(i => ({ id: i.id, name: `${i.name} (${i.unitLabel})` }));
         this.loading = false;
       },
       error: (err: Error) => {
@@ -266,7 +263,7 @@ export class VendorPurchaseComponent implements OnInit {
   addLineAndFocus() {
     this.closeOpenDropdowns();
     this.addLine();
-    setTimeout(() => this.rowItemInputs.last?.nativeElement.focus());
+    setTimeout(() => this.rowItemSelects.last?.focus());
   }
 
   removeLine(index: number) {
@@ -302,15 +299,17 @@ export class VendorPurchaseComponent implements OnInit {
     this.form.patchValue({
       date: parseApiDate(voucher.date),
       vendorId: vendorLine.vendorId,
-      description: voucher.description ?? '',
       notes: voucher.notes ?? ''
     });
 
     this.linesArray.clear();
     expenseLines.forEach(line => {
       const group = this.createLineGroup();
+      const matchedItem = this.itemOptions.find(item =>
+        item.name.trim().toLowerCase() === (line.itemName || line.freeText || '').trim().toLowerCase()
+      );
       group.patchValue({
-        itemName: line.itemName || line.freeText || '',
+        itemId: matchedItem?.id ?? null,
         quantityType: line.quantityType ?? QuantityType.PerPerson,
         quantity: line.quantity,
         rate: line.rate,
@@ -330,10 +329,9 @@ export class VendorPurchaseComponent implements OnInit {
     const request: CreateVendorPurchaseRequest = {
       date: formatDateForApi(value.date),
       vendorId: +value.vendorId,
-      description: value.description || null,
       notes: value.notes || null,
       lines: value.lines.map((line: any) => ({
-        itemName: line.itemName?.trim(),
+        itemName: this.resolveItemName(line.itemId),
         quantityType: +line.quantityType,
         quantity: +line.quantity,
         rate: +line.rate,
@@ -349,7 +347,10 @@ export class VendorPurchaseComponent implements OnInit {
       next: res => {
         this.voucherNo = res.voucherNo;
         this.masterData.reload();
-        this.masterData.loadItems(true).subscribe(items => this.itemOptions = items);
+        this.masterData.loadItems(true).subscribe(items => {
+          this.itemOptions = items;
+          this.itemSelectOptions = items.map(i => ({ id: i.id, name: `${i.name} (${i.unitLabel})` }));
+        });
         if (this.isEditMode) {
           this.toast.success(`Updated voucher ${res.voucherNo}`);
           this.populateVoucher(res);
@@ -372,11 +373,17 @@ export class VendorPurchaseComponent implements OnInit {
 
   private createLineGroup(): FormGroup {
     return this.fb.group({
-      itemName: ['', Validators.required],
+      itemId: [null, Validators.required],
       quantityType: [QuantityType.PerPerson],
       quantity: [null, [Validators.required, Validators.min(0.001)]],
       rate: [null, [Validators.required, Validators.min(0)]],
       description: ['']
     });
+  }
+
+  private resolveItemName(itemId: number | string | null | undefined): string {
+    const numericId = Number(itemId);
+    const item = this.itemOptions.find(i => i.id === numericId);
+    return item?.name?.trim() ?? '';
   }
 }

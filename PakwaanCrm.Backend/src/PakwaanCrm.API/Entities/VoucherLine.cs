@@ -20,6 +20,9 @@ public class VoucherLine : BaseEntity
     public int? ItemId { get; set; }
     public Item? Item { get; set; }
 
+    public int? AccountId { get; set; }
+    public Account? Account { get; set; }
+
     public QuantityType? QuantityType { get; set; }
     public decimal? Quantity { get; set; }
     public decimal? Rate { get; set; }

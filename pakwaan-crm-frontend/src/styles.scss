@@ -32,7 +32,7 @@ $theme: mat.define-light-theme((
   --r-sm: 8px;
   --r-md: 12px;
   --r-lg: 16px;
-  --control-height: 44px;
+  --control-height: 46px;
   --control-border: #cbd5e1;
   --control-border-strong: #94a3b8;
 }
@@ -144,15 +144,16 @@ html, body {
   flex-wrap: wrap;
   align-items: flex-start;
 
-  mat-form-field { flex: 1 1 200px; min-width: 160px; }
+  mat-form-field { flex: 1 1 240px; min-width: 220px; }
+  app-searchable-select { flex: 1 1 240px; min-width: 220px; }
 }
 
 .field-stack {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  min-width: 180px;
-  flex: 1 1 200px;
+  min-width: 220px;
+  flex: 1 1 240px;
 }
 
 .field-label {
@@ -267,7 +268,7 @@ html, body {
 
   &::placeholder { color: #94a3b8; }
 
-  &.w-fixed  { width: 96px; min-width: 96px; }
+  &.w-fixed  { width: 112px; min-width: 112px; }
   &.w-full   { width: 100%; }
 }
 

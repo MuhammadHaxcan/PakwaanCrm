@@ -9,12 +9,34 @@ public class VoucherRepository : Repository<Voucher>, IVoucherRepository
 {
     public VoucherRepository(AppDbContext context) : base(context) { }
 
+    public async Task DeleteAsync(Voucher voucher, CancellationToken ct = default)
+    {
+        // Fetch with lines so we can soft-delete them too
+        var withLines = await _context.Vouchers
+            .Include(v => v.Lines)
+            .FirstOrDefaultAsync(v => v.Id == voucher.Id, ct);
+
+        if (withLines == null) return;
+
+        foreach (var line in withLines.Lines)
+        {
+            line.IsDeleted = true;
+            _context.VoucherLines.Update(line);
+        }
+
+        withLines.IsDeleted = true;
+        _context.Vouchers.Update(withLines);
+        await _context.SaveChangesAsync(ct);
+    }
+
     public async Task<Voucher?> GetWithLinesAsync(int id, CancellationToken ct = default)
         => await _context.Vouchers
             .Include(v => v.Lines)
                 .ThenInclude(l => l.Customer)
             .Include(v => v.Lines)
                 .ThenInclude(l => l.Vendor)
+            .Include(v => v.Lines)
+                .ThenInclude(l => l.Account)
             .Include(v => v.Lines)
                 .ThenInclude(l => l.Item)
             .FirstOrDefaultAsync(v => v.Id == id, ct);
@@ -29,6 +51,8 @@ public class VoucherRepository : Repository<Voucher>, IVoucherRepository
             .Include(v => v.Lines)
                 .ThenInclude(l => l.Vendor)
             .Include(v => v.Lines)
+                .ThenInclude(l => l.Account)
+            .Include(v => v.Lines)
                 .ThenInclude(l => l.Item)
             .FirstOrDefaultAsync(v => v.VoucherNo.ToUpper() == normalized, ct);
     }
@@ -40,6 +64,8 @@ public class VoucherRepository : Repository<Voucher>, IVoucherRepository
                 .ThenInclude(l => l.Customer)
             .Include(v => v.Lines)
                 .ThenInclude(l => l.Vendor)
+            .Include(v => v.Lines)
+                .ThenInclude(l => l.Account)
             .Include(v => v.Lines)
                 .ThenInclude(l => l.Item)
             .AsQueryable();

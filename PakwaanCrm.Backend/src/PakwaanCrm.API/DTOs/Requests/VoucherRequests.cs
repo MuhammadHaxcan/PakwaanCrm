@@ -52,6 +52,7 @@ public class GeneralLineRequest
     public EntryType EntryType { get; set; }
     public int? CustomerId { get; set; }
     public int? VendorId { get; set; }
+    public int? AccountId { get; set; }
     public string? FreeText { get; set; }
     public int? ItemId { get; set; }
     public QuantityType? QuantityType { get; set; }

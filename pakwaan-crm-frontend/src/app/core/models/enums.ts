@@ -21,6 +21,6 @@ export const ENTRY_TYPE_LABELS: Record<EntryType, string> = {
   [EntryType.VendorCredit]:   'Vendor Credit   (Cr)',
   [EntryType.Revenue]:        'Revenue         (Cr)',
   [EntryType.Expense]:        'Expense         (Dr)',
-  [EntryType.CashDebit]:      'Bank/Cash Debit (Dr)',
-  [EntryType.CashCredit]:     'Bank/Cash Credit(Cr)',
+  [EntryType.CashDebit]:      'Account Debit   (Dr)',
+  [EntryType.CashCredit]:     'Account Credit  (Cr)',
 };

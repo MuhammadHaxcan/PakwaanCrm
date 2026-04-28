@@ -19,7 +19,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
 import { ApiService } from '../../core/services/api.service';
 import { MasterDataService } from '../../core/services/master-data.service';
 import { ToastService } from '../../core/services/toast.service';
-import { Customer, Vendor, Item } from '../../core/models/models';
+import { Account, Customer, Item, Vendor } from '../../core/models/models';
 import { ItemUnit } from '../../core/models/enums';
 
 // ─── Customer Dialog ───────────────────────────────────────────────────────
@@ -136,6 +136,35 @@ export class ItemDialogComponent {
   save() { if (this.form.valid) this.ref.close(this.form.value); }
 }
 
+// ─── Account Dialog ─────────────────────────────────────────────────────────
+@Component({
+  selector: 'app-account-dialog',
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule, MatButtonModule],
+  template: `
+    <h2 mat-dialog-title>{{ data ? 'Edit' : 'Add' }} Account</h2>
+    <mat-dialog-content>
+      <form [formGroup]="form" style="display:flex;flex-direction:column;gap:12px;padding-top:8px;min-width:320px">
+        <mat-form-field appearance="outline">
+          <mat-label>Account Name *</mat-label>
+          <input matInput formControlName="name" placeholder="e.g. Cash in Hand, Bank - HBL" />
+        </mat-form-field>
+      </form>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Cancel</button>
+      <button mat-flat-button color="primary" [disabled]="form.invalid" (click)="save()">Save</button>
+    </mat-dialog-actions>
+  `
+})
+export class AccountDialogComponent {
+  form: FormGroup;
+  constructor(private fb: FormBuilder, public ref: MatDialogRef<AccountDialogComponent>, @Inject(MAT_DIALOG_DATA) public data: Account | null) {
+    this.form = fb.group({ name: [data?.name ?? '', Validators.required] });
+  }
+  save() { if (this.form.valid) this.ref.close(this.form.value); }
+}
+
 // ─── Master Data Page ──────────────────────────────────────────────────────
 @Component({
   selector: 'app-master-data',
@@ -154,7 +183,7 @@ export class ItemDialogComponent {
         <div class="ph-icon"><mat-icon>manage_accounts</mat-icon></div>
         <div class="ph-text">
           <h2>Master Data</h2>
-          <p>Manage customers, vendors, and food items</p>
+          <p>Manage customers, vendors, items, and accounts</p>
         </div>
       </div>
 
@@ -256,6 +285,33 @@ export class ItemDialogComponent {
                 </table>
               </div>
             </mat-tab>
+
+            <!-- Accounts -->
+            <mat-tab label="Accounts ({{ accounts.length }})">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0">
+                <input class="search-input master-search" [(ngModel)]="accSearch" placeholder="Search accounts..." />
+                <button mat-flat-button color="primary" (click)="openAccountDialog()">
+                  <mat-icon>add</mat-icon> Add Account
+                </button>
+              </div>
+              <div *ngIf="loadingAccounts"><app-loading-spinner></app-loading-spinner></div>
+              <div class="line-grid" *ngIf="!loadingAccounts">
+                <table>
+                  <thead><tr><th>#</th><th>Name</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    <tr *ngFor="let a of filteredAccounts">
+                      <td class="text-muted">{{ a.id }}</td>
+                      <td class="font-bold">{{ a.name }}</td>
+                      <td>
+                        <button mat-icon-button color="primary" (click)="openAccountDialog(a)" matTooltip="Edit"><mat-icon>edit</mat-icon></button>
+                        <button mat-icon-button color="warn" (click)="deleteAccount(a)" matTooltip="Delete"><mat-icon>delete</mat-icon></button>
+                      </td>
+                    </tr>
+                    <tr *ngIf="filteredAccounts.length===0"><td colspan="3" class="text-center text-muted" style="padding:20px">No accounts found.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </mat-tab>
           </mat-tab-group>
         </mat-card-content>
       </mat-card>
@@ -273,16 +329,17 @@ export class MasterDataComponent implements OnInit {
   private masterData = inject(MasterDataService);
   private toast = inject(ToastService);
 
-  customers: Customer[] = []; vendors: Vendor[] = []; items: Item[] = [];
-  loadingCustomers = true; loadingVendors = true; loadingItems = true;
-  custSearch = ''; vendSearch = ''; itemSearch = '';
+  customers: Customer[] = []; vendors: Vendor[] = []; items: Item[] = []; accounts: Account[] = [];
+  loadingCustomers = true; loadingVendors = true; loadingItems = true; loadingAccounts = true;
+  custSearch = ''; vendSearch = ''; itemSearch = ''; accSearch = '';
 
   get filteredCustomers() { return this.customers.filter(c => c.name.toLowerCase().includes(this.custSearch.toLowerCase())); }
   get filteredVendors() { return this.vendors.filter(v => v.name.toLowerCase().includes(this.vendSearch.toLowerCase())); }
   get filteredItems() { return this.items.filter(i => i.name.toLowerCase().includes(this.itemSearch.toLowerCase())); }
+  get filteredAccounts() { return this.accounts.filter(a => a.name.toLowerCase().includes(this.accSearch.toLowerCase())); }
 
   ngOnInit() {
-    this.loadCustomers(); this.loadVendors(); this.loadItems();
+    this.loadCustomers(); this.loadVendors(); this.loadItems(); this.loadAccounts();
   }
 
   loadCustomers() {
@@ -297,6 +354,10 @@ export class MasterDataComponent implements OnInit {
     this.loadingItems = true;
     this.api.get<Item[]>('/items').subscribe({ next: d => { this.items = d; this.loadingItems = false; }, error: () => this.loadingItems = false });
   }
+  loadAccounts() {
+    this.loadingAccounts = true;
+    this.api.get<Account[]>('/accounts').subscribe({ next: d => { this.accounts = d; this.loadingAccounts = false; }, error: () => this.loadingAccounts = false });
+  }
 
   openCustomerDialog(customer?: Customer) {
     this.dialog.open(CustomerDialogComponent, { data: customer ?? null, width: '400px' })
@@ -306,7 +367,6 @@ export class MasterDataComponent implements OnInit {
         obs.subscribe({ next: () => { this.toast.success(customer ? 'Customer updated' : 'Customer added'); this.loadCustomers(); this.masterData.reload(); }, error: (e: Error) => this.toast.error(e.message) });
       });
   }
-
   deleteCustomer(c: Customer) {
     this.dialog.open(ConfirmDialogComponent, { data: { title: 'Delete Customer', message: `Delete "${c.name}"?` } })
       .afterClosed().subscribe(ok => {
@@ -323,7 +383,6 @@ export class MasterDataComponent implements OnInit {
         obs.subscribe({ next: () => { this.toast.success(vendor ? 'Vendor updated' : 'Vendor added'); this.loadVendors(); this.masterData.reload(); }, error: (e: Error) => this.toast.error(e.message) });
       });
   }
-
   deleteVendor(v: Vendor) {
     this.dialog.open(ConfirmDialogComponent, { data: { title: 'Delete Vendor', message: `Delete "${v.name}"?` } })
       .afterClosed().subscribe(ok => {
@@ -340,12 +399,27 @@ export class MasterDataComponent implements OnInit {
         obs.subscribe({ next: () => { this.toast.success(item ? 'Item updated' : 'Item added'); this.loadItems(); this.masterData.reload(); }, error: (e: Error) => this.toast.error(e.message) });
       });
   }
-
   deleteItem(i: Item) {
     this.dialog.open(ConfirmDialogComponent, { data: { title: 'Delete Item', message: `Delete "${i.name}"?` } })
       .afterClosed().subscribe(ok => {
         if (!ok) return;
         this.api.delete(`/items/${i.id}`).subscribe({ next: () => { this.toast.success('Deleted'); this.loadItems(); this.masterData.reload(); }, error: (e: Error) => this.toast.error(e.message) });
+      });
+  }
+
+  openAccountDialog(account?: Account) {
+    this.dialog.open(AccountDialogComponent, { data: account ?? null, width: '400px' })
+      .afterClosed().subscribe(result => {
+        if (!result) return;
+        const obs = account ? this.api.put(`/accounts/${account.id}`, result) : this.api.post('/accounts', result);
+        obs.subscribe({ next: () => { this.toast.success(account ? 'Account updated' : 'Account added'); this.loadAccounts(); this.masterData.reload(); }, error: (e: Error) => this.toast.error(e.message) });
+      });
+  }
+  deleteAccount(a: Account) {
+    this.dialog.open(ConfirmDialogComponent, { data: { title: 'Delete Account', message: `Delete "${a.name}"?` } })
+      .afterClosed().subscribe(ok => {
+        if (!ok) return;
+        this.api.delete(`/accounts/${a.id}`).subscribe({ next: () => { this.toast.success('Deleted'); this.loadAccounts(); this.masterData.reload(); }, error: (e: Error) => this.toast.error(e.message) });
       });
   }
 }

@@ -25,7 +25,7 @@ export interface SelectOption { id: number | string; name: string; }
   providers: [{ provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => SearchableSelectComponent), multi: true }],
   template: `
     <div class="ss-field" #fieldEl>
-      <mat-form-field appearance="outline" floatLabel="always" subscriptSizing="dynamic" class="ss-form-field">
+      <mat-form-field appearance="outline" floatLabel="always" subscriptSizing="dynamic" class="ss-form-field" [class.ss-has-value]="value != null">
         <mat-label *ngIf="label">{{ label }}</mat-label>
         <input
           #inputEl
@@ -40,16 +40,6 @@ export interface SelectOption { id: number | string; name: string; }
           [disabled]="isDisabled"
           autocomplete="off"
         />
-        <!-- Shown when a value is selected — acts as both clear and dropdown trigger -->
-        <button *ngIf="value != null" mat-icon-button matSuffix type="button"
-          class="ss-icon-btn" (mousedown)="clearValue($event)" tabindex="-1" [attr.title]="'Clear selection'">
-          <mat-icon>close</mat-icon>
-        </button>
-        <!-- Shown when no value selected — opens the dropdown -->
-        <mat-icon *ngIf="value == null" matSuffix class="ss-icon-btn"
-          (mousedown)="toggleDropdown($event)" title="Open dropdown">
-          expand_more
-        </mat-icon>
       </mat-form-field>
 
       <div class="ss-dropdown" *ngIf="isOpen && filteredOptions.length > 0" #dropdownEl [ngStyle]="dropdownStyle">
@@ -61,7 +51,6 @@ export interface SelectOption { id: number | string; name: string; }
           (mousedown)="selectOption(opt)"
           (mouseover)="highlightedIndex = i">
           <span class="ss-option-text">{{ opt.name }}</span>
-          <mat-icon *ngIf="isSelected(opt)" class="ss-option-check">check</mat-icon>
         </div>
       </div>
 
@@ -93,47 +82,26 @@ export interface SelectOption { id: number | string; name: string; }
 
     :host ::ng-deep .ss-form-field .mat-mdc-text-field-wrapper {
       background: #fff;
+      border-radius: 10px;
+      transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
     }
 
     :host ::ng-deep .ss-form-field .mat-mdc-form-field-infix {
       min-height: var(--ss-control-height, 46px);
     }
 
-    :host ::ng-deep .ss-form-field .mat-mdc-form-field-suffix {
-      position: absolute;
-      right: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      height: 24px;
-      display: flex;
-      align-items: center;
+    :host ::ng-deep .ss-form-field.ss-has-value .mat-mdc-text-field-wrapper {
+      background: #f8fafc;
+      box-shadow: inset 0 0 0 1px #dbe4ee;
+    }
+
+    :host ::ng-deep .ss-form-field.ss-has-value .ss-input {
+      font-weight: 600;
+      color: #0f172a;
     }
 
     .ss-input {
       cursor: text;
-    }
-
-    /* Shared style for the icon button and arrow icon in suffix area */
-    .ss-icon-btn {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      width: 24px !important;
-      height: 24px !important;
-      color: #94a3b8 !important;
-      cursor: pointer !important;
-      padding: 0 !important;
-      flex-shrink: 0 !important;
-    }
-
-    .ss-icon-btn:hover {
-      color: #dc2626 !important;
-    }
-
-    .ss-icon-btn mat-icon {
-      font-size: 18px !important;
-      width: 18px !important;
-      height: 18px !important;
     }
 
     /* Dropdown panel */
@@ -141,12 +109,12 @@ export interface SelectOption { id: number | string; name: string; }
       position: fixed;
       z-index: 9999;
       overflow-y: auto;
-      max-height: 300px;
+      max-height: 280px;
       background: #fff;
-      border: 1px solid #e8ecf1;
+      border: 1px solid #e2e8f0;
       border-radius: 10px;
-      box-shadow: 0 4px 16px rgba(15, 23, 42, .08), 0 1px 4px rgba(15, 23, 42, .05);
-      padding: 5px 0;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, .08);
+      padding: 4px 0;
       min-width: 200px;
     }
 
@@ -156,7 +124,7 @@ export interface SelectOption { id: number | string; name: string; }
       justify-content: space-between;
       padding: 10px 14px;
       cursor: pointer;
-      color: #374151;
+      color: #334155;
       font-size: 13.5px;
       font-family: 'Inter', sans-serif;
       transition: background-color .12s;
@@ -170,7 +138,7 @@ export interface SelectOption { id: number | string; name: string; }
       left: 14px;
       right: 14px;
       height: 1px;
-      background: #f1f5f9;
+      background: #f8fafc;
     }
 
     .ss-option:last-child::after {
@@ -183,27 +151,18 @@ export interface SelectOption { id: number | string; name: string; }
     }
 
     .ss-option.ss-selected {
-      color: #3949ab;
+      color: #0f172a;
       font-weight: 600;
-      background: #f0f4ff;
+      background: #eef2f7;
     }
 
     .ss-option.ss-selected:hover,
     .ss-option.ss-selected.ss-highlighted {
-      background: #e8eeff;
+      background: #e2e8f0;
     }
 
     .ss-option-text {
       flex: 1;
-    }
-
-    .ss-option-check {
-      font-size: 14px;
-      width: 14px;
-      height: 14px;
-      color: #3949ab;
-      flex-shrink: 0;
-      margin-left: 10px;
     }
 
     /* Empty state */
@@ -271,7 +230,7 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnChange
   }
 
   open() {
-    this.filterOptions();
+    this.filteredOptions = [...this.options];
     this.isOpen = true;
     this.highlightedIndex = -1;
     this.updateDropdownPosition();
@@ -283,16 +242,6 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnChange
       this.highlightedIndex = -1;
       this.onTouched();
     }, 180);
-  }
-
-  toggleDropdown(event: MouseEvent) {
-    event.preventDefault();
-    this.isOpen = !this.isOpen;
-    if (this.isOpen) {
-      this.filterOptions();
-      this.updateDropdownPosition();
-      this.inputEl?.nativeElement.focus();
-    }
   }
 
   filterOptions() {
@@ -310,17 +259,6 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnChange
     this.onChange(this.value);
     this.onTouched();
     this.cdr.detectChanges();
-  }
-
-  clearValue(event: MouseEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-    this.value = null;
-    this.searchText = '';
-    this.filterOptions();
-    this.onChange(null);
-    this.onTouched();
-    this.updateDropdownPosition();
   }
 
   isSelected(option: SelectOption): boolean {
@@ -402,10 +340,10 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnChange
   }
 
   private updateDropdownPosition() {
-    const input = this.inputEl?.nativeElement;
-    if (!input) return;
+    const anchor = this.fieldEl?.nativeElement ?? this.inputEl?.nativeElement;
+    if (!anchor) return;
 
-    const rect = input.getBoundingClientRect();
+    const rect = anchor.getBoundingClientRect();
     const scrollY = window.scrollY || window.pageYOffset;
     const scrollX = window.scrollX || window.pageXOffset;
 

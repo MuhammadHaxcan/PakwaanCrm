@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 using PakwaanCrm.API.Entities;
 using PakwaanCrm.API.Enums;
 
@@ -6,11 +8,13 @@ namespace PakwaanCrm.API.Data;
 
 public static class AppDbSeeder
 {
-    public static async Task SeedAsync(AppDbContext db, CancellationToken ct = default)
+    public static async Task SeedAsync(AppDbContext db, IConfiguration configuration, CancellationToken ct = default)
     {
+        await EnsureAdminUserAsync(db, configuration, ct);
         await EnsureCustomersAsync(db, ct);
         await EnsureVendorsAsync(db, ct);
         await EnsureItemsAsync(db, ct);
+        await EnsureAccountsAsync(db, ct);
 
         if (!await db.Vouchers.AnyAsync(ct))
         {
@@ -52,6 +56,41 @@ public static class AppDbSeeder
                 await db.Customers.AddAsync(customer, ct);
         }
 
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task EnsureAdminUserAsync(AppDbContext db, IConfiguration configuration, CancellationToken ct)
+    {
+        var hasAdmin = await db.AppUsers
+            .IgnoreQueryFilters()
+            .AnyAsync(u => u.Role == UserRole.Admin && !u.IsDeleted, ct);
+
+        if (hasAdmin)
+        {
+            return;
+        }
+
+        var username = configuration["SeedAdmin:Username"]?.Trim().ToLowerInvariant();
+        var password = configuration["SeedAdmin:Password"];
+        var displayName = configuration["SeedAdmin:DisplayName"]?.Trim();
+
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+        {
+            return;
+        }
+
+        var user = new AppUser
+        {
+            Username = username,
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? username : displayName,
+            Role = UserRole.Admin,
+            IsActive = true
+        };
+
+        var hasher = new PasswordHasher<AppUser>();
+        user.PasswordHash = hasher.HashPassword(user, password);
+
+        await db.AppUsers.AddAsync(user, ct);
         await db.SaveChangesAsync(ct);
     }
 
@@ -131,6 +170,25 @@ public static class AppDbSeeder
             var exists = await db.Items.AnyAsync(i => i.Name.ToLower() == item.Name.ToLower(), ct);
             if (!exists)
                 await db.Items.AddAsync(item, ct);
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task EnsureAccountsAsync(AppDbContext db, CancellationToken ct)
+    {
+        var accounts = new[]
+        {
+            new Account { Name = "Cash in Hand" },
+            new Account { Name = "Bank - Default" },
+            new Account { Name = "Petty Cash" }
+        };
+
+        foreach (var account in accounts)
+        {
+            var exists = await db.Accounts.AnyAsync(a => a.Name.ToLower() == account.Name.ToLower(), ct);
+            if (!exists)
+                await db.Accounts.AddAsync(account, ct);
         }
 
         await db.SaveChangesAsync(ct);

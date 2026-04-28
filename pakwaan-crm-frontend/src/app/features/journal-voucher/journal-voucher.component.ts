@@ -8,16 +8,16 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { forkJoin } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { MasterDataService } from '../../core/services/master-data.service';
 import { ToastService } from '../../core/services/toast.service';
 import { CreateJournalVoucherRequest, VoucherDetail } from '../../core/models/models';
-import { ENTRY_TYPE_LABELS, EntryType, VoucherType } from '../../core/models/enums';
+import { EntryType, VoucherType } from '../../core/models/enums';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select/searchable-select.component';
 import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
+import { JOURNAL_ENTRY_TYPE_OPTIONS, JOURNAL_ENTRY_TYPE_SELECT_OPTIONS } from '../../shared/constants/select-options';
 
 @Component({
   selector: 'app-general-voucher',
@@ -31,7 +31,6 @@ import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
-    MatSelectModule,
     MatTooltipModule,
     SearchableSelectComponent
   ],
@@ -65,10 +64,6 @@ import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-
                 <mat-datepicker #journalDatePicker></mat-datepicker>
               </mat-form-field>
               <mat-form-field appearance="outline" style="flex:2">
-                <mat-label>Description</mat-label>
-                <input matInput formControlName="description" placeholder="Voucher description..." />
-              </mat-form-field>
-              <mat-form-field appearance="outline" style="flex:2">
                 <mat-label>Notes</mat-label>
                 <input matInput formControlName="notes" placeholder="Optional notes..." />
               </mat-form-field>
@@ -89,9 +84,11 @@ import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-
                 <tbody formArrayName="lines">
                   <tr *ngFor="let line of linesArray.controls; let i = index" [formGroupName]="i">
                     <td>
-                      <select class="inline-select" formControlName="entryType" (change)="onEntryTypeChange(i)">
-                        <option *ngFor="let et of entryTypeOptions" [value]="et.value">{{ et.label }}</option>
-                      </select>
+                      <app-searchable-select
+                        [options]="entryTypeSelectOptions"
+                        placeholder="Entry Type"
+                        formControlName="entryType">
+                      </app-searchable-select>
                     </td>
                     <td>
                       <ng-container [ngSwitch]="getEntryTypeVal(i)">
@@ -107,6 +104,12 @@ import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-
                         <app-searchable-select *ngSwitchCase="3"
                           [options]="vendorOptions" placeholder="Vendor" formControlName="vendorId">
                         </app-searchable-select>
+                        <app-searchable-select *ngSwitchCase="6"
+                          [options]="accountOptions" placeholder="Account" formControlName="accountId">
+                        </app-searchable-select>
+                        <app-searchable-select *ngSwitchCase="7"
+                          [options]="accountOptions" placeholder="Account" formControlName="accountId">
+                        </app-searchable-select>
                         <input *ngSwitchDefault class="inline-input w-full"
                           formControlName="freeText" placeholder="Account / name..." />
                       </ng-container>
@@ -117,11 +120,13 @@ import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-
                     <td>
                       <input type="number" class="inline-input w-fixed" formControlName="debit"
                         placeholder="0.00" min="0" step="0.01"
+                        [disabled]="isDebitLocked(i)"
                         (input)="onAmountChange(i, 'debit')" />
                     </td>
                     <td>
                       <input type="number" class="inline-input w-fixed" formControlName="credit"
                         placeholder="0.00" min="0" step="0.01"
+                        [disabled]="isCreditLocked(i)"
                         (input)="onAmountChange(i, 'credit')" />
                     </td>
                     <td>
@@ -185,6 +190,7 @@ export class GeneralVoucherComponent implements OnInit {
   form!: FormGroup;
   customerOptions: SelectOption[] = [];
   vendorOptions: SelectOption[] = [];
+  accountOptions: SelectOption[] = [];
   loading = true;
   submitting = false;
   error = '';
@@ -193,27 +199,20 @@ export class GeneralVoucherComponent implements OnInit {
   private voucherId: number | null = null;
   voucherNo = '';
 
-  entryTypeOptions = [
-    { value: EntryType.VendorDebit, label: ENTRY_TYPE_LABELS[EntryType.VendorDebit] },
-    { value: EntryType.CashCredit, label: ENTRY_TYPE_LABELS[EntryType.CashCredit] },
-    { value: EntryType.CashDebit, label: ENTRY_TYPE_LABELS[EntryType.CashDebit] },
-    { value: EntryType.CustomerCredit, label: ENTRY_TYPE_LABELS[EntryType.CustomerCredit] },
-    { value: EntryType.Expense, label: ENTRY_TYPE_LABELS[EntryType.Expense] },
-    { value: EntryType.Revenue, label: ENTRY_TYPE_LABELS[EntryType.Revenue] },
-    { value: EntryType.CustomerDebit, label: ENTRY_TYPE_LABELS[EntryType.CustomerDebit] },
-    { value: EntryType.VendorCredit, label: ENTRY_TYPE_LABELS[EntryType.VendorCredit] }
-  ];
+  entryTypeOptions = JOURNAL_ENTRY_TYPE_OPTIONS;
+  entryTypeSelectOptions: SelectOption[] = JOURNAL_ENTRY_TYPE_SELECT_OPTIONS;
 
   ngOnInit() {
     this.form = this.fb.group({
       date: [todayDate(), Validators.required],
-      description: [''],
       notes: [''],
       lines: this.fb.array([
-        this.createLineGroup(EntryType.VendorDebit),
-        this.createLineGroup(EntryType.CashCredit)
+        this.createLineGroup(EntryType.CashDebit),
+        this.createLineGroup(EntryType.CustomerCredit)
       ])
     });
+    this.applyAmountLock(0);
+    this.applyAmountLock(1);
 
     const idParam = this.route.snapshot.paramMap.get('id');
     this.isEditMode = !!idParam;
@@ -223,11 +222,13 @@ export class GeneralVoucherComponent implements OnInit {
       forkJoin({
         customers: this.masterData.loadCustomers(),
         vendors: this.masterData.loadVendors(),
+        accounts: this.masterData.loadAccounts(),
         voucher: this.api.get<VoucherDetail>(`/vouchers/${this.voucherId}`)
       }).subscribe({
-        next: ({ customers, vendors, voucher }) => {
+        next: ({ customers, vendors, accounts, voucher }) => {
           this.customerOptions = customers.map(c => ({ id: c.id, name: c.name }));
           this.vendorOptions = vendors.map(v => ({ id: v.id, name: v.name }));
+          this.accountOptions = accounts.map(a => ({ id: a.id, name: a.name }));
           this.populateVoucher(voucher);
           this.loading = false;
         },
@@ -241,11 +242,13 @@ export class GeneralVoucherComponent implements OnInit {
 
     forkJoin({
       customers: this.masterData.loadCustomers(),
-      vendors: this.masterData.loadVendors()
+      vendors: this.masterData.loadVendors(),
+      accounts: this.masterData.loadAccounts()
     }).subscribe({
-      next: ({ customers, vendors }) => {
+      next: ({ customers, vendors, accounts }) => {
         this.customerOptions = customers.map(c => ({ id: c.id, name: c.name }));
         this.vendorOptions = vendors.map(v => ({ id: v.id, name: v.name }));
+        this.accountOptions = accounts.map(a => ({ id: a.id, name: a.name }));
         this.loading = false;
       },
       error: (err: Error) => {
@@ -282,14 +285,37 @@ export class GeneralVoucherComponent implements OnInit {
   }
 
   onEntryTypeChange(index: number) {
-    this.linesArray.at(index).patchValue({
+    const entryType = this.getEntryTypeVal(index) as EntryType;
+    const patch: Record<string, unknown> = {
       customerId: null,
       vendorId: null,
+      accountId: null,
       freeText: ''
-    });
+    };
+
+    if (this.isDebitOnlyEntry(entryType)) {
+      patch['credit'] = 0;
+    } else if (this.isCreditOnlyEntry(entryType)) {
+      patch['debit'] = 0;
+    }
+
+    this.linesArray.at(index).patchValue(patch);
+    this.applyAmountLock(index);
+  }
+
+  private onEntryTypeChangeForLine(line: FormGroup) {
+    const index = this.linesArray.controls.indexOf(line);
+    if (index >= 0) {
+      this.onEntryTypeChange(index);
+    }
   }
 
   onAmountChange(index: number, field: 'debit' | 'credit') {
+    if ((field === 'debit' && this.isDebitLocked(index)) || (field === 'credit' && this.isCreditLocked(index))) {
+      this.linesArray.at(index).patchValue({ [field]: 0 }, { emitEvent: false });
+      return;
+    }
+
     const value = +this.linesArray.at(index).get(field)?.value || 0;
     if (value > 0) {
       this.linesArray.at(index).patchValue({
@@ -300,6 +326,7 @@ export class GeneralVoucherComponent implements OnInit {
 
   addLine() {
     this.linesArray.push(this.createLineGroup());
+    this.applyAmountLock(this.linesArray.length - 1);
   }
 
   removeLine(index: number) {
@@ -315,12 +342,12 @@ export class GeneralVoucherComponent implements OnInit {
     const value = this.form.value;
     const request: CreateJournalVoucherRequest = {
       date: formatDateForApi(value.date),
-      description: value.description || null,
       notes: value.notes || null,
       lines: value.lines.map((line: any) => ({
         entryType: +line.entryType,
         customerId: line.customerId ? +line.customerId : null,
         vendorId: line.vendorId ? +line.vendorId : null,
+        accountId: line.accountId ? +line.accountId : null,
         freeText: line.freeText || null,
         description: line.description || null,
         debit: +line.debit || 0,
@@ -342,12 +369,11 @@ export class GeneralVoucherComponent implements OnInit {
           this.toast.success(`Saved! Voucher: ${result.voucherNo}`);
           this.form.reset({
             date: todayDate(),
-            description: '',
             notes: ''
           });
           this.linesArray.clear();
-          this.linesArray.push(this.createLineGroup(EntryType.VendorDebit));
-          this.linesArray.push(this.createLineGroup(EntryType.CashCredit));
+          this.linesArray.push(this.createLineGroup(EntryType.CashDebit));
+          this.linesArray.push(this.createLineGroup(EntryType.CustomerCredit));
         }
         this.submitting = false;
       },
@@ -372,7 +398,6 @@ export class GeneralVoucherComponent implements OnInit {
     this.voucherNo = voucher.voucherNo;
     this.form.patchValue({
       date: parseApiDate(voucher.date),
-      description: voucher.description ?? '',
       notes: voucher.notes ?? ''
     });
 
@@ -383,24 +408,77 @@ export class GeneralVoucherComponent implements OnInit {
         entryType: line.entryType,
         customerId: line.customerId ?? null,
         vendorId: line.vendorId ?? null,
+        accountId: line.accountId ?? null,
         freeText: line.freeText ?? '',
         description: line.description ?? '',
         debit: line.debit,
         credit: line.credit
       });
       this.linesArray.push(group);
+      this.applyAmountLock(this.linesArray.length - 1);
     });
   }
 
   private createLineGroup(entryType: EntryType = EntryType.Expense): FormGroup {
-    return this.fb.group({
+    const group = this.fb.group({
       entryType: [entryType, Validators.required],
       customerId: [null],
       vendorId: [null],
+      accountId: [null],
       freeText: [''],
       description: [''],
       debit: [0, [Validators.min(0)]],
       credit: [0, [Validators.min(0)]]
     });
+    group.get('entryType')?.valueChanges.subscribe(() => this.onEntryTypeChangeForLine(group));
+
+    return group;
+  }
+
+  isDebitLocked(index: number): boolean {
+    return this.isCreditOnlyEntry(this.getEntryTypeVal(index) as EntryType);
+  }
+
+  isCreditLocked(index: number): boolean {
+    return this.isDebitOnlyEntry(this.getEntryTypeVal(index) as EntryType);
+  }
+
+  private isDebitOnlyEntry(entryType: EntryType): boolean {
+    return entryType === EntryType.CustomerDebit
+      || entryType === EntryType.VendorDebit
+      || entryType === EntryType.Expense
+      || entryType === EntryType.CashDebit;
+  }
+
+  private isCreditOnlyEntry(entryType: EntryType): boolean {
+    return entryType === EntryType.CustomerCredit
+      || entryType === EntryType.VendorCredit
+      || entryType === EntryType.Revenue
+      || entryType === EntryType.CashCredit;
+  }
+
+  private applyAmountLock(index: number): void {
+    const line = this.linesArray.at(index);
+    const entryType = this.getEntryTypeVal(index) as EntryType;
+    const debitCtrl = line.get('debit');
+    const creditCtrl = line.get('credit');
+    if (!debitCtrl || !creditCtrl) return;
+
+    if (this.isDebitOnlyEntry(entryType)) {
+      creditCtrl.setValue(0, { emitEvent: false });
+      creditCtrl.disable({ emitEvent: false });
+      debitCtrl.enable({ emitEvent: false });
+      return;
+    }
+
+    if (this.isCreditOnlyEntry(entryType)) {
+      debitCtrl.setValue(0, { emitEvent: false });
+      debitCtrl.disable({ emitEvent: false });
+      creditCtrl.enable({ emitEvent: false });
+      return;
+    }
+
+    debitCtrl.enable({ emitEvent: false });
+    creditCtrl.enable({ emitEvent: false });
   }
 }

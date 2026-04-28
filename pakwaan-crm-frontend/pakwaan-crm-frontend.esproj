@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.VisualStudio.JavaScript.Sdk/1.0.4338480">
+  <PropertyGroup>
+    <StartupCommand>npm start</StartupCommand>
+    <JavaScriptTestFramework>Jasmine</JavaScriptTestFramework>
+    <ShouldRunBuildScript>false</ShouldRunBuildScript>
+    <BuildOutputFolder>$(MSBuildProjectDirectory)\dist\pakwaan-crm-frontend\browser\</BuildOutputFolder>
+    <LaunchBrowser>true</LaunchBrowser>
+    <LaunchUrl>http://localhost:4200</LaunchUrl>
+  </PropertyGroup>
+  <Target Name="Restore" />
+  <Target Name="Build" />
+  <Target Name="RestorePackages" BeforeTargets="Restore">
+  </Target>
+</Project>

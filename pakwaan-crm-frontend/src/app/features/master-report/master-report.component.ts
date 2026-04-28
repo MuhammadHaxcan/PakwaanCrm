@@ -6,7 +6,6 @@ import { MatCardModule } from '@angular/material/card';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
@@ -21,13 +20,14 @@ import { ReportExportService } from '../../core/services/report-export.service';
 import { AccountBalance, MasterReportEntry, MasterReportResponse } from '../../core/models/models';
 import { formatDateForApi, formatDateForDisplay, parseDateInput } from '../../core/date/date-utils';
 import { forkJoin } from 'rxjs';
+import { VOUCHER_TYPE_FILTER_OPTIONS } from '../../shared/constants/select-options';
 
 @Component({
   selector: 'app-master-report',
   standalone: true,
   imports: [
     CommonModule, ReactiveFormsModule, FormsModule,
-    MatCardModule, MatFormFieldModule, MatInputModule, MatSelectModule,
+    MatCardModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatIconModule, MatTableModule, MatCheckboxModule,
     MatTooltipModule, MatTabsModule, MatDatepickerModule,
     SearchableSelectComponent, LoadingSpinnerComponent
@@ -74,15 +74,10 @@ import { forkJoin } from 'rxjs';
                 [(ngModel)]="filters.vendorId" [ngModelOptions]="{standalone:true}">
               </app-searchable-select>
 
-              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-field">
-                <mat-label>Voucher Type</mat-label>
-                <select matNativeControl [(ngModel)]="filters.voucherTypeStr" [ngModelOptions]="{standalone:true}">
-                  <option value="">All</option>
-                  <option value="0">Sales</option>
-                  <option value="1">General</option>
-                  <option value="2">Purchase</option>
-                </select>
-              </mat-form-field>
+              <app-searchable-select class="filter-field filter-select-field" label="Voucher Type"
+                [options]="voucherTypeOptions" placeholder="All types"
+                [(ngModel)]="filters.voucherTypeStr" [ngModelOptions]="{standalone:true}">
+              </app-searchable-select>
 
               <div class="filter-actions">
                 <button mat-flat-button color="primary" (click)="generate()" [disabled]="generating" class="filter-action-button">
@@ -474,6 +469,7 @@ export class MasterReportComponent implements OnInit {
 
   customerOptions: SelectOption[] = [];
   vendorOptions: SelectOption[] = [];
+  voucherTypeOptions: SelectOption[] = VOUCHER_TYPE_FILTER_OPTIONS;
 
   filters = {
     startDate: null as Date | null, endDate: null as Date | null,

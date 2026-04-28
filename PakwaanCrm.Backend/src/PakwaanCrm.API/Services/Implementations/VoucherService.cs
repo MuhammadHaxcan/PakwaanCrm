@@ -290,6 +290,7 @@ public class VoucherService : IVoucherService
             EntryType = line.EntryType,
             CustomerId = line.CustomerId,
             VendorId = line.VendorId,
+            AccountId = line.AccountId,
             FreeText = string.IsNullOrWhiteSpace(line.FreeText) ? null : line.FreeText.Trim(),
             ItemId = line.ItemId,
             QuantityType = line.QuantityType,

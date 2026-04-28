@@ -12,6 +12,9 @@ export interface Item {
   id: number; name: string; unit: ItemUnit; unitLabel: string;
   defaultRate: number; isActive: boolean;
 }
+export interface Account {
+  id: number; name: string; createdAt: string;
+}
 
 export interface VoucherListItem {
   id: number; voucherNo: string; date: string;
@@ -22,6 +25,7 @@ export interface VoucherLine {
   id: number; entryType: EntryType; entryTypeLabel: string;
   customerId?: number; customerName?: string;
   vendorId?: number; vendorName?: string;
+  accountId?: number; accountName?: string;
   freeText?: string; itemId?: number; itemName?: string;
   quantityType?: QuantityType; quantity?: number; rate?: number;
   description?: string; debit: number; credit: number;
@@ -67,6 +71,7 @@ export interface AccountBalance {
 export interface CreateCustomerRequest { name: string; phone?: string; address?: string; openingBalance: number; }
 export interface CreateVendorRequest { name: string; phone?: string; address?: string; openingBalance: number; }
 export interface CreateItemRequest { name: string; unit: ItemUnit; defaultRate: number; isActive: boolean; }
+export interface CreateAccountRequest { name: string; }
 
 export interface SalesLineRequest {
   customerId: number;
@@ -78,7 +83,7 @@ export interface CreateSalesVoucherRequest {
 }
 
 export interface GeneralLineRequest {
-  entryType: EntryType; customerId?: number; vendorId?: number;
+  entryType: EntryType; customerId?: number; vendorId?: number; accountId?: number;
   freeText?: string; description?: string; debit: number; credit: number;
 }
 export interface CreateJournalVoucherRequest {

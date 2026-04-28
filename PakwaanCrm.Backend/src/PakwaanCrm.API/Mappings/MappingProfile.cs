@@ -35,8 +35,14 @@ public class MappingProfile : Profile
         CreateMap<VoucherLine, VoucherLineDto>()
             .ForMember(d => d.CustomerName, o => o.MapFrom(s => s.Customer != null ? s.Customer.Name : null))
             .ForMember(d => d.VendorName, o => o.MapFrom(s => s.Vendor != null ? s.Vendor.Name : null))
+            .ForMember(d => d.AccountName, o => o.MapFrom(s => s.Account != null ? s.Account.Name : null))
             .ForMember(d => d.ItemName, o => o.MapFrom(s => s.Item != null ? s.Item.Name : null))
             .ForMember(d => d.EntryTypeLabel, o => o.MapFrom(s => GetEntryTypeLabel(s.EntryType)));
+
+        // Account
+        CreateMap<Account, AccountDto>();
+        CreateMap<CreateAccountRequest, Account>();
+        CreateMap<UpdateAccountRequest, Account>();
     }
 
     private static string GetEntryTypeLabel(EntryType entryType) => entryType switch

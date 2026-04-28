@@ -129,6 +129,7 @@ public class ReportService : IReportService
             .Include(l => l.Voucher)
             .Include(l => l.Customer)
             .Include(l => l.Vendor)
+            .Include(l => l.Account)
             .Include(l => l.Item)
             .AsQueryable();
 
@@ -162,11 +163,27 @@ public class ReportService : IReportService
                 openingQuery = openingQuery.Where(l => (int)l.Voucher.VoucherType == voucherType.Value);
 
             var openingTotals = await openingQuery
-                .Select(l => new { l.Debit, l.Credit })
+                .Select(l => new { l.Debit, l.Credit, l.CustomerId, l.VendorId })
                 .ToListAsync(ct);
 
-            openingDebit = openingTotals.Sum(x => x.Debit);
-            openingCredit = openingTotals.Sum(x => x.Credit);
+            // For customers: debit increases balance (debit - credit)
+            // For vendors: credit increases balance (credit - debit)
+            openingDebit = openingTotals
+                .Where(l => l.CustomerId.HasValue)
+                .Sum(l => l.Debit);
+            openingCredit = openingTotals
+                .Where(l => l.CustomerId.HasValue)
+                .Sum(l => l.Credit);
+
+            var vendorOpeningDebit = openingTotals
+                .Where(l => l.VendorId.HasValue)
+                .Sum(l => l.Debit);
+            var vendorOpeningCredit = openingTotals
+                .Where(l => l.VendorId.HasValue)
+                .Sum(l => l.Credit);
+
+            openingDebit += vendorOpeningDebit;
+            openingCredit += vendorOpeningCredit;
             hasOpeningBalance = true;
         }
 
@@ -200,7 +217,21 @@ public class ReportService : IReportService
 
         foreach (var line in lines)
         {
-            runningBalance += line.Debit - line.Credit;
+            // For customer lines: balance increases by debit, decreases by credit (debit - credit)
+            // For vendor lines: balance increases by credit, decreases by debit (credit - debit)
+            // For account lines: debit increases, credit decreases (same as customer/cash style)
+            // Cash/Revenue/Expense lines use debit - credit (neutral accounts)
+            decimal delta;
+            if (line.CustomerId.HasValue)
+                delta = line.Debit - line.Credit;
+            else if (line.VendorId.HasValue)
+                delta = line.Credit - line.Debit;
+            else if (line.AccountId.HasValue)
+                delta = line.Debit - line.Credit;
+            else
+                delta = line.Debit - line.Credit;
+
+            runningBalance += delta;
 
             entries.Add(new MasterReportEntryDto
             {
@@ -208,7 +239,7 @@ public class ReportService : IReportService
                 VoucherNo = line.Voucher.VoucherNo,
                 VoucherType = GetVoucherTypeLabel(line.Voucher.VoucherType),
                 Description = line.Description ?? line.Voucher.Description,
-                AccountName = line.Customer?.Name ?? line.Vendor?.Name ?? line.FreeText ?? "-",
+                AccountName = line.Customer?.Name ?? line.Vendor?.Name ?? line.Account?.Name ?? line.FreeText ?? "-",
                 AccountCategory = line.EntryType.ToString(),
                 ItemName = line.Item?.Name ?? (line.EntryType == EntryType.Expense ? line.FreeText : null),
                 Quantity = line.Quantity,
@@ -271,6 +302,23 @@ public class ReportService : IReportService
                 TotalDebit = debit,
                 TotalCredit = credit,
                 Balance = vendor.OpeningBalance + credit - debit
+            });
+        }
+
+        var accounts = await _context.Accounts.ToListAsync(ct);
+        foreach (var account in accounts)
+        {
+            var debit = await _context.VoucherLines.Where(l => l.AccountId == account.Id).SumAsync(l => l.Debit, ct);
+            var credit = await _context.VoucherLines.Where(l => l.AccountId == account.Id).SumAsync(l => l.Credit, ct);
+            result.Add(new AccountBalanceDto
+            {
+                Id = account.Id,
+                Name = account.Name,
+                AccountType = "Account",
+                OpeningBalance = 0,
+                TotalDebit = debit,
+                TotalCredit = credit,
+                Balance = debit - credit
             });
         }
 
