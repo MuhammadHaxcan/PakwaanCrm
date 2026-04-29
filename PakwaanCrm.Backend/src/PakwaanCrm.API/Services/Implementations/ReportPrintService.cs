@@ -1,6 +1,7 @@
 using PakwaanCrm.API.Common.Models;
 using PakwaanCrm.API.DTOs.Responses;
 using PakwaanCrm.API.Services.Interfaces;
+using Microsoft.Extensions.Hosting;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -10,10 +11,12 @@ namespace PakwaanCrm.API.Services.Implementations;
 public class ReportPrintService : IReportPrintService
 {
     private readonly IReportService _reportService;
+    private readonly byte[]? _brandingImage;
 
-    public ReportPrintService(IReportService reportService)
+    public ReportPrintService(IReportService reportService, IHostEnvironment environment)
     {
         _reportService = reportService;
+        _brandingImage = PdfBranding.LoadPanjatanImage(environment.ContentRootPath);
     }
 
     public async Task<Result<PrintableVoucherDocument>> GenerateSoaPdfAsync(
@@ -63,7 +66,7 @@ public class ReportPrintService : IReportPrintService
         });
     }
 
-    private static byte[] BuildSoaPdf(SoaResponseDto soa, DateTime? startDate, DateTime? endDate)
+    private byte[] BuildSoaPdf(SoaResponseDto soa, DateTime? startDate, DateTime? endDate)
     {
         return Document.Create(container =>
         {
@@ -75,10 +78,29 @@ public class ReportPrintService : IReportPrintService
 
                 page.Header().Column(c =>
                 {
-                    c.Item().Text("Statement of Account").SemiBold().FontSize(18).FontColor(Colors.Blue.Medium);
-                    c.Item().Text($"{soa.AccountName} ({soa.AccountType})").SemiBold();
-                    c.Item().Text($"Period: {Fmt(startDate)} to {Fmt(endDate)}");
-                    c.Item().Text($"Opening: {soa.OpeningBalance:0.00}  Debit: {soa.TotalDebit:0.00}  Credit: {soa.TotalCredit:0.00}  Closing: {soa.ClosingBalance:0.00}");
+                    c.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(left =>
+                        {
+                            left.Item().Text("Statement of Account").SemiBold().FontSize(18).FontColor(Colors.Blue.Medium);
+                            left.Item().Text($"{soa.AccountName} ({soa.AccountType})").SemiBold();
+                            left.Item().Text($"Period: {Fmt(startDate)} to {Fmt(endDate)}");
+                            left.Item().Text($"Opening: {soa.OpeningBalance:0.00}  Debit: {soa.TotalDebit:0.00}  Credit: {soa.TotalCredit:0.00}  Closing: {soa.ClosingBalance:0.00}");
+                        });
+
+                        row.ConstantItem(130).Column(right =>
+                        {
+                            if (_brandingImage is { Length: > 0 })
+                            {
+                                right.Item().Height(54).AlignRight().AlignTop().Image(_brandingImage).FitArea();
+                            }
+
+                            right.Item().PaddingTop(2).AlignRight().Text("Panjatan Catering")
+                                .SemiBold()
+                                .FontSize(10)
+                                .FontColor(Colors.Grey.Darken3);
+                        });
+                    });
                 });
 
                 page.Content().PaddingTop(10).Table(t =>
@@ -131,7 +153,7 @@ public class ReportPrintService : IReportPrintService
         }).GeneratePdf();
     }
 
-    private static byte[] BuildMasterPdf(MasterReportResponseDto report, DateTime? startDate, DateTime? endDate)
+    private byte[] BuildMasterPdf(MasterReportResponseDto report, DateTime? startDate, DateTime? endDate)
     {
         return Document.Create(container =>
         {
@@ -143,9 +165,28 @@ public class ReportPrintService : IReportPrintService
 
                 page.Header().Column(c =>
                 {
-                    c.Item().Text("Master Report").SemiBold().FontSize(18).FontColor(Colors.Blue.Medium);
-                    c.Item().Text($"Period: {Fmt(startDate)} to {Fmt(endDate)}");
-                    c.Item().Text($"Records: {report.TotalRecords}  Debit: {report.TotalDebit:0.00}  Credit: {report.TotalCredit:0.00}");
+                    c.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(left =>
+                        {
+                            left.Item().Text("Master Report").SemiBold().FontSize(18).FontColor(Colors.Blue.Medium);
+                            left.Item().Text($"Period: {Fmt(startDate)} to {Fmt(endDate)}");
+                            left.Item().Text($"Records: {report.TotalRecords}  Debit: {report.TotalDebit:0.00}  Credit: {report.TotalCredit:0.00}");
+                        });
+
+                        row.ConstantItem(130).Column(right =>
+                        {
+                            if (_brandingImage is { Length: > 0 })
+                            {
+                                right.Item().Height(54).AlignRight().AlignTop().Image(_brandingImage).FitArea();
+                            }
+
+                            right.Item().PaddingTop(2).AlignRight().Text("Panjatan Catering")
+                                .SemiBold()
+                                .FontSize(10)
+                                .FontColor(Colors.Grey.Darken3);
+                        });
+                    });
                 });
 
                 page.Content().PaddingTop(8).Table(t =>
@@ -221,4 +262,3 @@ public class ReportPrintService : IReportPrintService
         return new string(value.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
     }
 }
-

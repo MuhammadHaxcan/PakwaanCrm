@@ -1,7 +1,10 @@
 using PakwaanCrm.API.Common.Models;
+using PakwaanCrm.API.Data;
 using PakwaanCrm.API.DTOs.Responses;
 using PakwaanCrm.API.Enums;
 using PakwaanCrm.API.Services.Interfaces;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -10,11 +13,15 @@ namespace PakwaanCrm.API.Services.Implementations;
 
 public class VoucherPrintService : IVoucherPrintService
 {
+    private readonly AppDbContext _context;
     private readonly IVoucherService _voucherService;
+    private readonly byte[]? _brandingImage;
 
-    public VoucherPrintService(IVoucherService voucherService)
+    public VoucherPrintService(AppDbContext context, IVoucherService voucherService, IHostEnvironment environment)
     {
+        _context = context;
         _voucherService = voucherService;
+        _brandingImage = PdfBranding.LoadPanjatanImage(environment.ContentRootPath);
     }
 
     public async Task<Result<PrintableVoucherDocument>> GenerateVoucherPdfAsync(
@@ -37,7 +44,8 @@ public class VoucherPrintService : IVoucherPrintService
         if (voucher.VoucherType != expectedType)
             return Result<PrintableVoucherDocument>.Failure("Voucher type mismatch.");
 
-        var pdfBytes = BuildVoucherPdf(voucher);
+        var balanceSummary = await BuildBalanceSummaryAsync(voucher, ct);
+        var pdfBytes = BuildVoucherPdf(voucher, balanceSummary);
         var result = new PrintableVoucherDocument
         {
             FileName = $"{normalizedVoucherNo}.pdf",
@@ -48,7 +56,7 @@ public class VoucherPrintService : IVoucherPrintService
         return Result<PrintableVoucherDocument>.Success(result);
     }
 
-    private static byte[] BuildVoucherPdf(VoucherDetailDto voucher)
+    private byte[] BuildVoucherPdf(VoucherDetailDto voucher, VoucherBalanceSummary balanceSummary)
     {
         var generatedAt = DateTime.UtcNow;
         var totalDebit = voucher.Lines.Sum(line => line.Debit);
@@ -64,15 +72,34 @@ public class VoucherPrintService : IVoucherPrintService
 
                 page.Header().Column(column =>
                 {
-                    column.Item().Text(GetVoucherTitle(voucher.VoucherType))
-                        .SemiBold()
-                        .FontSize(18)
-                        .FontColor(Colors.Blue.Medium);
-                    column.Item().Text($"Voucher No: {voucher.VoucherNo}").SemiBold();
-                    column.Item().Text($"Date: {voucher.Date:dd/MM/yyyy}");
-                    column.Item().Text($"Generated: {generatedAt:dd/MM/yyyy HH:mm} UTC")
-                        .FontColor(Colors.Grey.Darken2)
-                        .FontSize(9);
+                    column.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(left =>
+                        {
+                            left.Item().Text(GetVoucherTitle(voucher.VoucherType))
+                                .SemiBold()
+                                .FontSize(18)
+                                .FontColor(Colors.Blue.Medium);
+                            left.Item().Text($"Voucher No: {voucher.VoucherNo}").SemiBold();
+                            left.Item().Text($"Date: {voucher.Date:dd/MM/yyyy}");
+                            left.Item().Text($"Generated: {generatedAt:dd/MM/yyyy HH:mm} UTC")
+                                .FontColor(Colors.Grey.Darken2)
+                                .FontSize(9);
+                        });
+
+                        row.ConstantItem(130).Column(right =>
+                        {
+                            if (_brandingImage is { Length: > 0 })
+                            {
+                                right.Item().Height(54).AlignRight().AlignTop().Image(_brandingImage).FitArea();
+                            }
+
+                            right.Item().PaddingTop(2).AlignRight().Text("Panjatan Catering")
+                                .SemiBold()
+                                .FontSize(10)
+                                .FontColor(Colors.Grey.Darken3);
+                        });
+                    });
                 });
 
                 page.Content().PaddingVertical(12).Column(column =>
@@ -133,6 +160,16 @@ public class VoucherPrintService : IVoucherPrintService
                     {
                         totalColumn.Item().Text($"Total Debit: {totalDebit:0.00}").SemiBold();
                         totalColumn.Item().Text($"Total Credit: {totalCredit:0.00}").SemiBold();
+
+                        if (voucher.VoucherType is VoucherType.Sales or VoucherType.Purchase)
+                        {
+                            totalColumn.Item().PaddingTop(4).Text("--------------------------------").FontColor(Colors.Grey.Medium);
+                            totalColumn.Item().Text($"Previous Balance: {FormatMoneyOrNa(balanceSummary.PreviousBalance)}").SemiBold();
+                            totalColumn.Item().Text($"Voucher Impact: {FormatMoneyOrNa(balanceSummary.VoucherImpact)}").SemiBold();
+                            totalColumn.Item().Text($"Current Running Balance: {FormatMoneyOrNa(balanceSummary.CurrentRunningBalance)}")
+                                .SemiBold()
+                                .FontColor(Colors.Blue.Darken2);
+                        }
                     });
                 });
 
@@ -179,6 +216,96 @@ public class VoucherPrintService : IVoucherPrintService
             .BorderColor(Colors.Grey.Lighten2)
             .PaddingVertical(5)
             .PaddingHorizontal(4);
+    }
+
+    private static string FormatMoneyOrNa(decimal? value) => value.HasValue ? $"{value.Value:0.00}" : "N/A";
+
+    private async Task<VoucherBalanceSummary> BuildBalanceSummaryAsync(VoucherDetailDto voucher, CancellationToken ct)
+    {
+        if (voucher.VoucherType == VoucherType.Sales)
+        {
+            var customerId = voucher.Lines
+                .Where(line => line.CustomerId.HasValue)
+                .Select(line => line.CustomerId!.Value)
+                .Distinct()
+                .SingleOrDefault();
+
+            if (customerId <= 0)
+                return VoucherBalanceSummary.Na();
+
+            var opening = await _context.Customers
+                .Where(customer => customer.Id == customerId)
+                .Select(customer => customer.OpeningBalance)
+                .FirstOrDefaultAsync(ct);
+
+            var previousDelta = await _context.VoucherLines
+                .Where(line =>
+                    line.CustomerId == customerId &&
+                    (line.Voucher.Date < voucher.Date ||
+                     (line.Voucher.Date == voucher.Date && line.VoucherId < voucher.Id)))
+                .SumAsync(line => line.Debit - line.Credit, ct);
+
+            var previousBalance = opening + previousDelta;
+            var impact = voucher.Lines
+                .Where(line => line.CustomerId == customerId)
+                .Sum(line => line.Debit - line.Credit);
+
+            return VoucherBalanceSummary.From(previousBalance, impact);
+        }
+
+        if (voucher.VoucherType == VoucherType.Purchase)
+        {
+            var vendorId = voucher.Lines
+                .Where(line => line.VendorId.HasValue)
+                .Select(line => line.VendorId!.Value)
+                .Distinct()
+                .SingleOrDefault();
+
+            if (vendorId <= 0)
+                return VoucherBalanceSummary.Na();
+
+            var opening = await _context.Vendors
+                .Where(vendor => vendor.Id == vendorId)
+                .Select(vendor => vendor.OpeningBalance)
+                .FirstOrDefaultAsync(ct);
+
+            var previousDelta = await _context.VoucherLines
+                .Where(line =>
+                    line.VendorId == vendorId &&
+                    (line.Voucher.Date < voucher.Date ||
+                     (line.Voucher.Date == voucher.Date && line.VoucherId < voucher.Id)))
+                .SumAsync(line => line.Credit - line.Debit, ct);
+
+            var previousBalance = opening + previousDelta;
+            var impact = voucher.Lines
+                .Where(line => line.VendorId == vendorId)
+                .Sum(line => line.Credit - line.Debit);
+
+            return VoucherBalanceSummary.From(previousBalance, impact);
+        }
+
+        return VoucherBalanceSummary.Na();
+    }
+
+    private sealed class VoucherBalanceSummary
+    {
+        public decimal? PreviousBalance { get; private init; }
+        public decimal? VoucherImpact { get; private init; }
+        public decimal? CurrentRunningBalance { get; private init; }
+
+        public static VoucherBalanceSummary From(decimal previousBalance, decimal voucherImpact) => new()
+        {
+            PreviousBalance = previousBalance,
+            VoucherImpact = voucherImpact,
+            CurrentRunningBalance = previousBalance + voucherImpact
+        };
+
+        public static VoucherBalanceSummary Na() => new()
+        {
+            PreviousBalance = null,
+            VoucherImpact = null,
+            CurrentRunningBalance = null
+        };
     }
 }
 
