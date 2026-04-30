@@ -190,10 +190,10 @@ public class ReportService : IReportService
             var previousPageTotals = await orderedQuery
                 .Skip(0)
                 .Take(page * pageSize)
-                .Select(l => new { l.Debit, l.Credit })
+                .Select(l => new { l.Debit, l.Credit, l.CustomerId, l.VendorId })
                 .ToListAsync(ct);
 
-            runningBalanceBeforePage += previousPageTotals.Sum(x => x.Debit - x.Credit);
+            runningBalanceBeforePage += previousPageTotals.Sum(line => GetLineBalanceDelta(line.Debit, line.Credit, line.CustomerId, line.VendorId));
         }
 
         var lines = await orderedQuery
@@ -210,15 +210,7 @@ public class ReportService : IReportService
             // For vendor lines: balance increases by credit, decreases by debit (credit - debit)
             // For account lines: debit increases, credit decreases (same as customer/cash style)
             // Cash/Revenue/Expense lines use debit - credit (neutral accounts)
-            decimal delta;
-            if (line.CustomerId.HasValue)
-                delta = line.Debit - line.Credit;
-            else if (line.VendorId.HasValue)
-                delta = line.Credit - line.Debit;
-            else if (line.AccountId.HasValue)
-                delta = line.Debit - line.Credit;
-            else
-                delta = line.Debit - line.Credit;
+            var delta = GetLineBalanceDelta(line.Debit, line.Credit, line.CustomerId, line.VendorId);
 
             runningBalance += delta;
 
@@ -256,59 +248,190 @@ public class ReportService : IReportService
         };
     }
 
-    public async Task<List<AccountBalanceDto>> GetBalancesAsync(CancellationToken ct = default)
+    public async Task<List<AccountBalanceDto>> GetBalancesAsync(
+        DateTime? startDate,
+        DateTime? endDate,
+        int? customerId,
+        int? vendorId,
+        int? voucherType,
+        CancellationToken ct = default)
     {
+        var fromDate = NormalizeUtcDate(startDate)?.Date;
+        var toExclusive = NormalizeUtcDate(endDate)?.Date.AddDays(1);
         var result = new List<AccountBalanceDto>();
 
-        var customers = await _context.Customers.ToListAsync(ct);
-        foreach (var customer in customers)
+        var includeCustomers = !vendorId.HasValue || customerId.HasValue;
+        var includeVendors = !customerId.HasValue || vendorId.HasValue;
+        var includeAccounts = !customerId.HasValue && !vendorId.HasValue;
+
+        if (includeCustomers)
         {
-            var debit = await _context.VoucherLines.Where(l => l.CustomerId == customer.Id).SumAsync(l => l.Debit, ct);
-            var credit = await _context.VoucherLines.Where(l => l.CustomerId == customer.Id).SumAsync(l => l.Credit, ct);
-            result.Add(new AccountBalanceDto
+            var customerQuery = _context.Customers.AsQueryable();
+            if (customerId.HasValue)
+                customerQuery = customerQuery.Where(c => c.Id == customerId.Value);
+
+            var customers = await customerQuery.ToListAsync(ct);
+            foreach (var customer in customers)
             {
-                Id = customer.Id,
-                Name = customer.Name,
-                AccountType = "Customer",
-                OpeningBalance = customer.OpeningBalance,
-                TotalDebit = debit,
-                TotalCredit = credit,
-                Balance = customer.OpeningBalance + debit - credit
-            });
+                var linesQuery = _context.VoucherLines
+                    .Include(l => l.Voucher)
+                    .Where(l => l.CustomerId == customer.Id);
+
+                if (voucherType.HasValue)
+                    linesQuery = linesQuery.Where(l => (int)l.Voucher.VoucherType == voucherType.Value);
+
+                var openingBalance = customer.OpeningBalance;
+                if (fromDate.HasValue)
+                {
+                    var previousEntries = await linesQuery
+                        .Where(l => l.Voucher.Date < fromDate.Value)
+                        .Select(l => new { l.Debit, l.Credit })
+                        .ToListAsync(ct);
+
+                    openingBalance += previousEntries.Sum(entry => entry.Debit - entry.Credit);
+                }
+
+                var periodQuery = linesQuery;
+                if (fromDate.HasValue)
+                    periodQuery = periodQuery.Where(l => l.Voucher.Date >= fromDate.Value);
+                if (toExclusive.HasValue)
+                    periodQuery = periodQuery.Where(l => l.Voucher.Date < toExclusive.Value);
+
+                var periodTotals = await periodQuery
+                    .GroupBy(_ => 1)
+                    .Select(group => new
+                    {
+                        Debit = group.Sum(line => line.Debit),
+                        Credit = group.Sum(line => line.Credit)
+                    })
+                    .FirstOrDefaultAsync(ct);
+
+                var totalDebit = periodTotals?.Debit ?? 0;
+                var totalCredit = periodTotals?.Credit ?? 0;
+
+                result.Add(new AccountBalanceDto
+                {
+                    Id = customer.Id,
+                    Name = customer.Name,
+                    AccountType = "Customer",
+                    OpeningBalance = openingBalance,
+                    TotalDebit = totalDebit,
+                    TotalCredit = totalCredit,
+                    Balance = openingBalance + totalDebit - totalCredit
+                });
+            }
         }
 
-        var vendors = await _context.Vendors.ToListAsync(ct);
-        foreach (var vendor in vendors)
+        if (includeVendors)
         {
-            var debit = await _context.VoucherLines.Where(l => l.VendorId == vendor.Id).SumAsync(l => l.Debit, ct);
-            var credit = await _context.VoucherLines.Where(l => l.VendorId == vendor.Id).SumAsync(l => l.Credit, ct);
-            result.Add(new AccountBalanceDto
+            var vendorQuery = _context.Vendors.AsQueryable();
+            if (vendorId.HasValue)
+                vendorQuery = vendorQuery.Where(v => v.Id == vendorId.Value);
+
+            var vendors = await vendorQuery.ToListAsync(ct);
+            foreach (var vendor in vendors)
             {
-                Id = vendor.Id,
-                Name = vendor.Name,
-                AccountType = "Vendor",
-                OpeningBalance = vendor.OpeningBalance,
-                TotalDebit = debit,
-                TotalCredit = credit,
-                Balance = vendor.OpeningBalance + credit - debit
-            });
+                var linesQuery = _context.VoucherLines
+                    .Include(l => l.Voucher)
+                    .Where(l => l.VendorId == vendor.Id);
+
+                if (voucherType.HasValue)
+                    linesQuery = linesQuery.Where(l => (int)l.Voucher.VoucherType == voucherType.Value);
+
+                var openingBalance = vendor.OpeningBalance;
+                if (fromDate.HasValue)
+                {
+                    var previousEntries = await linesQuery
+                        .Where(l => l.Voucher.Date < fromDate.Value)
+                        .Select(l => new { l.Debit, l.Credit })
+                        .ToListAsync(ct);
+
+                    openingBalance += previousEntries.Sum(entry => entry.Credit - entry.Debit);
+                }
+
+                var periodQuery = linesQuery;
+                if (fromDate.HasValue)
+                    periodQuery = periodQuery.Where(l => l.Voucher.Date >= fromDate.Value);
+                if (toExclusive.HasValue)
+                    periodQuery = periodQuery.Where(l => l.Voucher.Date < toExclusive.Value);
+
+                var periodTotals = await periodQuery
+                    .GroupBy(_ => 1)
+                    .Select(group => new
+                    {
+                        Debit = group.Sum(line => line.Debit),
+                        Credit = group.Sum(line => line.Credit)
+                    })
+                    .FirstOrDefaultAsync(ct);
+
+                var totalDebit = periodTotals?.Debit ?? 0;
+                var totalCredit = periodTotals?.Credit ?? 0;
+
+                result.Add(new AccountBalanceDto
+                {
+                    Id = vendor.Id,
+                    Name = vendor.Name,
+                    AccountType = "Vendor",
+                    OpeningBalance = openingBalance,
+                    TotalDebit = totalDebit,
+                    TotalCredit = totalCredit,
+                    Balance = openingBalance + totalCredit - totalDebit
+                });
+            }
         }
 
-        var accounts = await _context.Accounts.ToListAsync(ct);
-        foreach (var account in accounts)
+        if (includeAccounts)
         {
-            var debit = await _context.VoucherLines.Where(l => l.AccountId == account.Id).SumAsync(l => l.Debit, ct);
-            var credit = await _context.VoucherLines.Where(l => l.AccountId == account.Id).SumAsync(l => l.Credit, ct);
-            result.Add(new AccountBalanceDto
+            var accounts = await _context.Accounts.ToListAsync(ct);
+            foreach (var account in accounts)
             {
-                Id = account.Id,
-                Name = account.Name,
-                AccountType = "Account",
-                OpeningBalance = 0,
-                TotalDebit = debit,
-                TotalCredit = credit,
-                Balance = debit - credit
-            });
+                var linesQuery = _context.VoucherLines
+                    .Include(l => l.Voucher)
+                    .Where(l => l.AccountId == account.Id);
+
+                if (voucherType.HasValue)
+                    linesQuery = linesQuery.Where(l => (int)l.Voucher.VoucherType == voucherType.Value);
+
+                decimal openingBalance = 0;
+                if (fromDate.HasValue)
+                {
+                    var previousEntries = await linesQuery
+                        .Where(l => l.Voucher.Date < fromDate.Value)
+                        .Select(l => new { l.Debit, l.Credit })
+                        .ToListAsync(ct);
+
+                    openingBalance += previousEntries.Sum(entry => entry.Debit - entry.Credit);
+                }
+
+                var periodQuery = linesQuery;
+                if (fromDate.HasValue)
+                    periodQuery = periodQuery.Where(l => l.Voucher.Date >= fromDate.Value);
+                if (toExclusive.HasValue)
+                    periodQuery = periodQuery.Where(l => l.Voucher.Date < toExclusive.Value);
+
+                var periodTotals = await periodQuery
+                    .GroupBy(_ => 1)
+                    .Select(group => new
+                    {
+                        Debit = group.Sum(line => line.Debit),
+                        Credit = group.Sum(line => line.Credit)
+                    })
+                    .FirstOrDefaultAsync(ct);
+
+                var totalDebit = periodTotals?.Debit ?? 0;
+                var totalCredit = periodTotals?.Credit ?? 0;
+
+                result.Add(new AccountBalanceDto
+                {
+                    Id = account.Id,
+                    Name = account.Name,
+                    AccountType = "Account",
+                    OpeningBalance = openingBalance,
+                    TotalDebit = totalDebit,
+                    TotalCredit = totalCredit,
+                    Balance = openingBalance + totalDebit - totalCredit
+                });
+            }
         }
 
         return result;
@@ -316,6 +439,13 @@ public class ReportService : IReportService
 
     private static decimal GetBalanceDelta(decimal debit, decimal credit, bool isCustomer)
         => isCustomer ? debit - credit : credit - debit;
+
+    private static decimal GetLineBalanceDelta(decimal debit, decimal credit, int? customerId, int? vendorId)
+    {
+        if (customerId.HasValue) return debit - credit;
+        if (vendorId.HasValue) return credit - debit;
+        return debit - credit;
+    }
 
     private static DateTime? NormalizeUtcDate(DateTime? value)
     {

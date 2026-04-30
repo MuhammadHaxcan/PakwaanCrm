@@ -301,6 +301,7 @@ export class GeneralVoucherComponent implements OnInit {
 
     this.linesArray.at(index).patchValue(patch);
     this.applyAmountLock(index);
+    this.applyLineEntityValidation(this.linesArray.at(index) as FormGroup);
   }
 
   private onEntryTypeChangeForLine(line: FormGroup) {
@@ -326,7 +327,9 @@ export class GeneralVoucherComponent implements OnInit {
 
   addLine() {
     this.linesArray.push(this.createLineGroup());
-    this.applyAmountLock(this.linesArray.length - 1);
+    const index = this.linesArray.length - 1;
+    this.applyAmountLock(index);
+    this.applyLineEntityValidation(this.linesArray.at(index) as FormGroup);
   }
 
   removeLine(index: number) {
@@ -416,6 +419,7 @@ export class GeneralVoucherComponent implements OnInit {
       });
       this.linesArray.push(group);
       this.applyAmountLock(this.linesArray.length - 1);
+      this.applyLineEntityValidation(group);
     });
   }
 
@@ -431,8 +435,35 @@ export class GeneralVoucherComponent implements OnInit {
       credit: [0, [Validators.min(0)]]
     });
     group.get('entryType')?.valueChanges.subscribe(() => this.onEntryTypeChangeForLine(group));
+    this.applyLineEntityValidation(group);
 
     return group;
+  }
+
+  private applyLineEntityValidation(group: FormGroup): void {
+    const entryType = +(group.get('entryType')?.value ?? EntryType.Expense) as EntryType;
+    const customerCtrl = group.get('customerId');
+    const vendorCtrl = group.get('vendorId');
+    const accountCtrl = group.get('accountId');
+    const freeTextCtrl = group.get('freeText');
+
+    customerCtrl?.clearValidators();
+    vendorCtrl?.clearValidators();
+    accountCtrl?.clearValidators();
+    freeTextCtrl?.clearValidators();
+
+    if (entryType === EntryType.CustomerDebit || entryType === EntryType.CustomerCredit) {
+      customerCtrl?.setValidators([Validators.required]);
+    } else if (entryType === EntryType.VendorDebit || entryType === EntryType.VendorCredit) {
+      vendorCtrl?.setValidators([Validators.required]);
+    } else if (entryType === EntryType.CashDebit || entryType === EntryType.CashCredit) {
+      accountCtrl?.setValidators([Validators.required]);
+    }
+
+    customerCtrl?.updateValueAndValidity({ emitEvent: false });
+    vendorCtrl?.updateValueAndValidity({ emitEvent: false });
+    accountCtrl?.updateValueAndValidity({ emitEvent: false });
+    freeTextCtrl?.updateValueAndValidity({ emitEvent: false });
   }
 
   isDebitLocked(index: number): boolean {

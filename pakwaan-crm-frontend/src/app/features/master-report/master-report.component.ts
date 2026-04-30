@@ -556,6 +556,7 @@ export class MasterReportComponent implements OnInit {
     this.generating = true;
     this.error = '';
     this.entries = [];
+    this.balances = [];
     this.currentPage = 0;
     this.hasMore = false;
     this.totalRecords = 0;
@@ -602,7 +603,13 @@ export class MasterReportComponent implements OnInit {
 
   private fetchBalances() {
     this.loadingBalances = true;
-    this.api.get<AccountBalance[]>('/reports/balances').subscribe({
+    this.api.get<AccountBalance[]>('/reports/balances', {
+      startDate: formatDateForApi(this.filters.startDate),
+      endDate: formatDateForApi(this.filters.endDate),
+      customerId: this.filters.customerId,
+      vendorId: this.filters.vendorId,
+      voucherType: this.voucherTypeFilter
+    }).subscribe({
       next:  b  => { this.balances = b; this.loadingBalances = false; },
       error: () => this.loadingBalances = false
     });

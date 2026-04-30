@@ -16,10 +16,6 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
   template: `
     <div class="print-voucher-page">
       <div class="topbar">
-        <div class="title-wrap">
-          <h2>Voucher Print Preview</h2>
-          <p *ngIf="voucherNo">{{ voucherNo }}</p>
-        </div>
         <div class="actions">
           <button mat-stroked-button type="button" (click)="retry()" [disabled]="loading">
             <mat-icon>refresh</mat-icon>
@@ -51,11 +47,9 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
     :host { display:block; min-height: 100vh; background:#f5f7fb; }
     .print-voucher-page { min-height:100vh; display:flex; flex-direction:column; }
     .topbar {
-      display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;
+      display:flex; justify-content:flex-end; align-items:center; gap:12px; flex-wrap:wrap;
       padding:14px 18px; background:#fff; border-bottom:1px solid #e5eaf5;
     }
-    .title-wrap h2 { margin:0; font-size:18px; color:#1f2a44; }
-    .title-wrap p { margin:3px 0 0; color:#60708f; font-size:12px; font-weight:600; }
     .actions { display:flex; gap:8px; flex-wrap:wrap; }
     .state {
       min-height:180px; display:flex; align-items:center; justify-content:center; padding:20px;
@@ -78,6 +72,7 @@ export class PrintVoucherPageComponent implements OnInit, OnDestroy {
   loading = true;
   error = '';
   voucherNo = '';
+  pdfFileName = '';
   pdfUrl: SafeResourceUrl | null = null;
 
   ngOnInit(): void {
@@ -91,13 +86,15 @@ export class PrintVoucherPageComponent implements OnInit, OnDestroy {
           const routePath = this.route.routeConfig?.path ?? '';
           this.kind = routePath.includes('sale') ? 'sale' : routePath.includes('purchase') ? 'purchase' : 'journal';
           this.voucherNo = (paramMap.get('voucherNo') ?? '').trim();
+          this.pdfFileName = this.buildPdfFileName(this.voucherNo);
+          document.title = this.pdfFileName;
           const apiPath = buildVoucherPrintApiPath(this.kind, this.voucherNo);
           return this.http.get(apiPath, { responseType: 'blob' });
         })
       )
       .subscribe({
         next: blob => {
-          this.objectUrl = URL.createObjectURL(blob);
+          this.objectUrl = URL.createObjectURL(this.toNamedPdfFile(blob));
           this.pdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.objectUrl);
           this.loading = false;
         },
@@ -112,10 +109,11 @@ export class PrintVoucherPageComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.error = '';
     this.clearUrl();
+    document.title = this.pdfFileName || 'Voucher Print';
     const apiPath = buildVoucherPrintApiPath(this.kind, this.voucherNo);
     this.http.get(apiPath, { responseType: 'blob' }).subscribe({
       next: blob => {
-        this.objectUrl = URL.createObjectURL(blob);
+        this.objectUrl = URL.createObjectURL(this.toNamedPdfFile(blob));
         this.pdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.objectUrl);
         this.loading = false;
       },
@@ -148,5 +146,13 @@ export class PrintVoucherPageComponent implements OnInit, OnDestroy {
       this.objectUrl = null;
     }
     this.pdfUrl = null;
+  }
+
+  private toNamedPdfFile(blob: Blob): File {
+    return new File([blob], this.pdfFileName || 'voucher.pdf', { type: 'application/pdf' });
+  }
+
+  private buildPdfFileName(voucherNo: string): string {
+    return `panjatancatering-${voucherNo.trim().toUpperCase()}.pdf`;
   }
 }

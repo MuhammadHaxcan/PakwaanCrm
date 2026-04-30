@@ -43,8 +43,14 @@ public class ReportsController : ControllerBase
         => Ok(await _service.GetMasterReportAsync(startDate, endDate, customerId, vendorId, voucherType, page, pageSize, ct));
 
     [HttpGet("balances")]
-    public async Task<IActionResult> GetBalances(CancellationToken ct)
-        => Ok(await _service.GetBalancesAsync(ct));
+    public async Task<IActionResult> GetBalances(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate,
+        [FromQuery] int? customerId,
+        [FromQuery] int? vendorId,
+        [FromQuery] int? voucherType,
+        CancellationToken ct)
+        => Ok(await _service.GetBalancesAsync(startDate, endDate, customerId, vendorId, voucherType, ct));
 
     [HttpGet("print/soa")]
     public async Task<IActionResult> PrintSoa(

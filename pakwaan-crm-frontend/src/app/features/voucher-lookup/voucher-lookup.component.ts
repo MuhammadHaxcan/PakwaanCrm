@@ -206,7 +206,7 @@ export class VoucherLookupComponent {
   }
 
   getAccountLabel(line: VoucherLine) {
-    return line.customerName || line.vendorName || line.freeText || '-';
+    return line.customerName || line.vendorName || line.accountName || line.freeText || '-';
   }
 
   getUnitLabel(quantityType?: QuantityType) {

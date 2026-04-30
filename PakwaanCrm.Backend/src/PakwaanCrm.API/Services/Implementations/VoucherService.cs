@@ -12,13 +12,11 @@ namespace PakwaanCrm.API.Services.Implementations;
 public class VoucherService : IVoucherService
 {
     private readonly IVoucherRepository _repo;
-    private readonly IItemRepository _itemRepo;
     private readonly IMapper _mapper;
 
-    public VoucherService(IVoucherRepository repo, IItemRepository itemRepo, IMapper mapper)
+    public VoucherService(IVoucherRepository repo, IMapper mapper)
     {
         _repo = repo;
-        _itemRepo = itemRepo;
         _mapper = mapper;
     }
 
@@ -165,8 +163,6 @@ public class VoucherService : IVoucherService
         var validation = ValidateVendorPurchaseRequest(request);
         if (!validation.IsSuccess) return Result<VoucherDetailDto>.Failure(validation.Error!);
 
-        var resolvedRequest = await ResolveVendorPurchaseItemsAsync(request, ct);
-
         var voucherNo = await _repo.GenerateVoucherNumberAsync("PV-", ct);
         var voucher = new Voucher
         {
@@ -174,8 +170,8 @@ public class VoucherService : IVoucherService
             VoucherType = VoucherType.Purchase
         };
 
-        ApplyVoucherHeader(voucher, resolvedRequest.Date, resolvedRequest.Description, resolvedRequest.Notes);
-        ReplaceVendorPurchaseLines(voucher, resolvedRequest);
+        ApplyVoucherHeader(voucher, request.Date, request.Description, request.Notes);
+        ReplaceVendorPurchaseLines(voucher, request);
 
         await _repo.AddAsync(voucher, ct);
         await _repo.SaveChangesAsync(ct);
@@ -188,15 +184,13 @@ public class VoucherService : IVoucherService
         var validation = ValidateVendorPurchaseRequest(request);
         if (!validation.IsSuccess) return Result<VoucherDetailDto>.Failure(validation.Error!);
 
-        var resolvedRequest = await ResolveVendorPurchaseItemsAsync(request, ct);
-
         var voucher = await _repo.GetWithLinesAsync(id, ct);
         if (voucher == null) return Result<VoucherDetailDto>.Failure("Voucher not found.");
         if (voucher.VoucherType != VoucherType.Purchase)
             return Result<VoucherDetailDto>.Failure("Voucher type does not match vendor purchase editor.");
 
-        ApplyVoucherHeader(voucher, resolvedRequest.Date, resolvedRequest.Description, resolvedRequest.Notes);
-        ReplaceVendorPurchaseLines(voucher, resolvedRequest);
+        ApplyVoucherHeader(voucher, request.Date, request.Description, request.Notes);
+        ReplaceVendorPurchaseLines(voucher, request);
 
         _repo.Update(voucher);
         await _repo.SaveChangesAsync(ct);
@@ -248,6 +242,32 @@ public class VoucherService : IVoucherService
         if (request.Lines.Any(line => line.Debit == 0 && line.Credit == 0))
             return Result.Failure("Each journal line must have either a debit or a credit amount.");
 
+        for (var i = 0; i < request.Lines.Count; i++)
+        {
+            var line = request.Lines[i];
+            var lineNo = i + 1;
+            switch (line.EntryType)
+            {
+                case EntryType.CustomerDebit:
+                case EntryType.CustomerCredit:
+                    if (!line.CustomerId.HasValue || line.CustomerId.Value <= 0)
+                        return Result.Failure($"Line {lineNo}: customer is required for customer entries.");
+                    break;
+
+                case EntryType.VendorDebit:
+                case EntryType.VendorCredit:
+                    if (!line.VendorId.HasValue || line.VendorId.Value <= 0)
+                        return Result.Failure($"Line {lineNo}: vendor is required for vendor entries.");
+                    break;
+
+                case EntryType.CashDebit:
+                case EntryType.CashCredit:
+                    if (!line.AccountId.HasValue || line.AccountId.Value <= 0)
+                        return Result.Failure($"Line {lineNo}: account is required for cash/account entries.");
+                    break;
+            }
+        }
+
         return Result.Success();
     }
 
@@ -266,8 +286,8 @@ public class VoucherService : IVoucherService
         if (normalizedLines.Count == 0)
             return Result.Failure("Each line must have a quantity greater than zero.");
 
-        if (normalizedLines.Any(line => line.ItemId is null && string.IsNullOrWhiteSpace(line.ItemName)))
-            return Result.Failure("Each line needs either an item or an item name.");
+        if (normalizedLines.Any(line => !line.ItemId.HasValue || line.ItemId.Value <= 0))
+            return Result.Failure("Each purchase line requires a valid item.");
 
         var totalAmount = normalizedLines.Sum(line => line.Quantity * line.Rate);
         if (totalAmount <= 0)
@@ -372,7 +392,6 @@ public class VoucherService : IVoucherService
             {
                 EntryType = EntryType.Expense,
                 ItemId = line.ItemId,
-                FreeText = line.ItemId.HasValue ? null : (string.IsNullOrWhiteSpace(line.ItemName) ? null : line.ItemName!.Trim()),
                 QuantityType = line.QuantityType,
                 Quantity = line.Quantity,
                 Rate = line.Rate,
@@ -399,63 +418,6 @@ public class VoucherService : IVoucherService
         return saved == null
             ? Result<VoucherDetailDto>.Failure("Voucher not found after save.")
             : Result<VoucherDetailDto>.Success(_mapper.Map<VoucherDetailDto>(saved));
-    }
-
-    private async Task<CreateVendorPurchaseRequest> ResolveVendorPurchaseItemsAsync(CreateVendorPurchaseRequest request, CancellationToken ct)
-    {
-        var items = await _itemRepo.GetAllAsync(ct);
-        var itemLookup = items.ToDictionary(item => item.Name.Trim().ToUpperInvariant(), item => item);
-        var pendingItems = new Dictionary<string, Item>();
-
-        foreach (var line in request.Lines.Where(line => line.ItemId is null && !string.IsNullOrWhiteSpace(line.ItemName)))
-        {
-            var normalizedName = line.ItemName!.Trim().ToUpperInvariant();
-            if (itemLookup.ContainsKey(normalizedName) || pendingItems.ContainsKey(normalizedName))
-                continue;
-
-            var item = new Item
-            {
-                Name = line.ItemName!.Trim(),
-                Unit = line.QuantityType == QuantityType.PerKg ? ItemUnit.PerKg : ItemUnit.PerPerson,
-                DefaultRate = line.Rate,
-                IsActive = true
-            };
-
-            await _itemRepo.AddAsync(item, ct);
-            pendingItems[normalizedName] = item;
-        }
-
-        if (pendingItems.Count > 0)
-            await _itemRepo.SaveChangesAsync(ct);
-
-        foreach (var pair in pendingItems)
-            itemLookup[pair.Key] = pair.Value;
-
-        return new CreateVendorPurchaseRequest
-        {
-            Date = request.Date,
-            VendorId = request.VendorId,
-            Description = request.Description,
-            Notes = request.Notes,
-            Lines = request.Lines.Select(line =>
-            {
-                var trimmedName = string.IsNullOrWhiteSpace(line.ItemName) ? null : line.ItemName.Trim();
-                var resolvedItemId = line.ItemId;
-
-                if (!resolvedItemId.HasValue && trimmedName != null && itemLookup.TryGetValue(trimmedName.ToUpperInvariant(), out var item))
-                    resolvedItemId = item.Id;
-
-                return new VendorPurchaseLineRequest
-                {
-                    ItemId = resolvedItemId,
-                    ItemName = trimmedName,
-                    QuantityType = line.QuantityType,
-                    Quantity = line.Quantity,
-                    Rate = line.Rate,
-                    Description = line.Description
-                };
-            }).ToList()
-        };
     }
 
     private static int ParseVoucherNumber(string voucherNo, string prefix)

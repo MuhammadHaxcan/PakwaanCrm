@@ -415,15 +415,23 @@ export class SoaComponent implements OnInit {
 
   ngOnInit() {
     this.filterForm = this.fb.group({
-      accountType: ['Customer', Validators.required],
-      accountId: [null, Validators.required],
+      accountType: ['', Validators.required],
+      accountId: [{ value: null, disabled: true }, Validators.required],
       startDate: [''],
       endDate: ['']
     });
 
     this.filterForm.get('accountType')?.valueChanges.subscribe(type => {
-      this.accountOptions = type === 'Customer' ? this.customers : this.vendors;
-      this.filterForm.patchValue({ accountId: null });
+      const accountIdControl = this.filterForm.get('accountId');
+      if (type === 'Customer' || type === 'Vendor') {
+        this.accountOptions = type === 'Customer' ? this.customers : this.vendors;
+        accountIdControl?.enable({ emitEvent: false });
+      } else {
+        this.accountOptions = [];
+        accountIdControl?.disable({ emitEvent: false });
+      }
+
+      accountIdControl?.setValue(null, { emitEvent: false });
     });
 
     forkJoin([
@@ -432,7 +440,7 @@ export class SoaComponent implements OnInit {
     ]).subscribe(([customers, vendors]) => {
       this.customers = customers.map(customer => ({ id: customer.id, name: customer.name }));
       this.vendors = vendors.map(vendor => ({ id: vendor.id, name: vendor.name }));
-      this.accountOptions = this.customers;
+      this.accountOptions = [];
     });
   }
 

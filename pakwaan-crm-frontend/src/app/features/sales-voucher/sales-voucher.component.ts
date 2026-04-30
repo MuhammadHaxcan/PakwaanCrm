@@ -18,6 +18,9 @@ import { EntryType, QuantityType, VoucherType } from '../../core/models/enums';
 import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
 import { forkJoin } from 'rxjs';
 import { QUANTITY_TYPE_OPTIONS } from '../../shared/constants/select-options';
+import { buildVoucherPrintRoute } from '../../core/utils/voucher-print.utils';
+
+type SalesSubmitMode = 'save' | 'saveAndPrint';
 
 @Component({
   selector: 'app-sales-voucher',
@@ -149,11 +152,30 @@ import { QUANTITY_TYPE_OPTIONS } from '../../shared/constants/select-options';
               </button>
               <span class="spacer"></span>
               <div *ngIf="error" class="text-red" style="font-size:13px">{{ error }}</div>
-              <button mat-flat-button color="primary" type="submit"
-                [disabled]="submitting || form.invalid || (isEditMode && hasMixedCustomers)" style="padding:0 24px;height:40px">
-                <mat-icon *ngIf="!submitting" style="margin-right:6px">save</mat-icon>
-                {{ submitting ? 'Saving...' : (isEditMode ? 'Update Voucher' : 'Save Voucher') }}
-              </button>
+              <ng-container *ngIf="!isEditMode; else editSubmitButton">
+                <button mat-flat-button color="primary" type="button"
+                  (click)="onSubmit('save')"
+                  [disabled]="submitting || form.invalid"
+                  style="padding:0 24px;height:40px">
+                  <mat-icon *ngIf="!submitting || submitMode !== 'save'" style="margin-right:6px">save</mat-icon>
+                  {{ submitting && submitMode === 'save' ? 'Saving...' : 'Save Voucher' }}
+                </button>
+                <button mat-stroked-button color="primary" type="button"
+                  (click)="onSubmit('saveAndPrint')"
+                  [disabled]="submitting || form.invalid"
+                  style="padding:0 24px;height:40px">
+                  <mat-icon *ngIf="!submitting || submitMode !== 'saveAndPrint'" style="margin-right:6px">print</mat-icon>
+                  {{ submitting && submitMode === 'saveAndPrint' ? 'Saving & Printing...' : 'Save & Print' }}
+                </button>
+              </ng-container>
+              <ng-template #editSubmitButton>
+                <button mat-flat-button color="primary" type="submit"
+                  [disabled]="submitting || form.invalid || hasMixedCustomers"
+                  style="padding:0 24px;height:40px">
+                  <mat-icon *ngIf="!submitting" style="margin-right:6px">save</mat-icon>
+                  {{ submitting ? 'Saving...' : 'Update Voucher' }}
+                </button>
+              </ng-template>
             </div>
           </form>
         </mat-card-content>
@@ -182,6 +204,7 @@ export class SalesVoucherComponent implements OnInit {
   error = '';
   loadError = '';
   isEditMode = false;
+  submitMode: SalesSubmitMode = 'save';
   private voucherId: number | null = null;
   voucherNo = '';
 
@@ -331,9 +354,10 @@ export class SalesVoucherComponent implements OnInit {
     this.searchableSelects.forEach(select => select.closeDropdown());
   }
 
-  onSubmit() {
-    if (this.form.invalid) return;
+  onSubmit(mode: SalesSubmitMode = 'save') {
+    if (this.form.invalid || this.submitting) return;
     this.submitting = true;
+    this.submitMode = mode;
     this.error = '';
 
     const val = this.form.value;
@@ -357,14 +381,20 @@ export class SalesVoucherComponent implements OnInit {
           this.toast.success(`Updated voucher ${updated.voucherNo}`);
           this.populateVoucher(updated);
           this.submitting = false;
+          this.submitMode = 'save';
         },
         error: (err: Error) => {
           this.error = err.message;
           this.submitting = false;
+          this.submitMode = 'save';
         }
       });
       return;
     }
+
+    const printTabs = mode === 'saveAndPrint'
+      ? this.preOpenPrintTabs(this.getDistinctCustomerCount())
+      : [];
 
     this.api.post<SalesVoucherCreateResult>('/vouchers/sales', req).subscribe({
       next: created => {
@@ -374,15 +404,71 @@ export class SalesVoucherComponent implements OnInit {
               ? `Saved! Voucher: ${created.voucherNos[0]}`
               : `Saved ${created.createdCount} vouchers: ${created.voucherNos.join(', ')}`
           );
+          if (mode === 'saveAndPrint') {
+            this.routePrintTabs(printTabs, created.voucherNos);
+          }
           this.form.reset({ date: todayDate() });
           this.linesArray.clear();
           this.linesArray.push(this.createLineGroup());
-        this.submitting = false;
+          this.submitting = false;
+          this.submitMode = 'save';
       },
       error: (err: Error) => {
+        this.closePrintTabs(printTabs);
         this.error = err.message;
         this.submitting = false;
+        this.submitMode = 'save';
       }
+    });
+  }
+
+  private getDistinctCustomerCount(): number {
+    const customerIds = this.linesArray.controls
+      .map(control => control.get('customerId')?.value)
+      .filter(value => value !== null && value !== undefined && value !== '');
+
+    return new Set(customerIds).size;
+  }
+
+  private preOpenPrintTabs(expectedCount: number): Window[] {
+    const tabs: Window[] = [];
+
+    for (let index = 0; index < expectedCount; index++) {
+      const tab = window.open('about:blank', '_blank');
+      if (!tab) continue;
+
+      try {
+        tab.document.title = 'Preparing print preview';
+        tab.document.body.innerHTML = '<p style="font-family: sans-serif; padding: 24px;">Preparing print preview...</p>';
+      } catch {
+        // Ignore cross-window document write failures and just route the tab later.
+      }
+
+      tabs.push(tab);
+    }
+
+    if (tabs.length < expectedCount) {
+      this.toast.info('Allow pop-ups to open every print preview tab.');
+    }
+
+    return tabs;
+  }
+
+  private routePrintTabs(tabs: Window[], voucherNos: string[]): void {
+    tabs.forEach((tab, index) => {
+      const voucherNo = voucherNos[index];
+      if (!voucherNo) {
+        if (!tab.closed) tab.close();
+        return;
+      }
+
+      tab.location.href = buildVoucherPrintRoute('Sales', voucherNo);
+    });
+  }
+
+  private closePrintTabs(tabs: Window[]): void {
+    tabs.forEach(tab => {
+      if (!tab.closed) tab.close();
     });
   }
 }

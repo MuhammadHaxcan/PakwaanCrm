@@ -14,7 +14,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
 import { ApiService } from '../../core/services/api.service';
 import { MasterDataService } from '../../core/services/master-data.service';
 import { ToastService } from '../../core/services/toast.service';
-import { CreateVendorPurchaseRequest, Item, VoucherDetail } from '../../core/models/models';
+import { CreateVendorPurchaseRequest, VoucherDetail } from '../../core/models/models';
 import { EntryType, QuantityType, VoucherType } from '../../core/models/enums';
 import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
 import { QUANTITY_TYPE_OPTIONS } from '../../shared/constants/select-options';
@@ -85,7 +85,7 @@ import { QUANTITY_TYPE_OPTIONS } from '../../shared/constants/select-options';
             </div>
 
             <div style="font-size:12px;color:#64748b;margin:-6px 0 14px">
-              Tip: select an existing item/service or type a new one. New vendor bill items are saved into master items automatically.
+              Select an existing item/service from master items. If a bill line is missing, add it in master items first.
             </div>
 
             <div class="line-grid">
@@ -180,7 +180,6 @@ export class VendorPurchaseComponent implements OnInit {
 
   form!: FormGroup;
   vendorOptions: SelectOption[] = [];
-  itemOptions: Item[] = [];
   itemSelectOptions: SelectOption[] = [];
   quantityTypeOptions: SelectOption[] = QUANTITY_TYPE_OPTIONS;
   loading = true;
@@ -211,7 +210,6 @@ export class VendorPurchaseComponent implements OnInit {
       }).subscribe({
         next: ({ vendors, items, voucher }) => {
           this.vendorOptions = vendors.map(v => ({ id: v.id, name: v.name }));
-          this.itemOptions = items;
           this.itemSelectOptions = items.map(i => ({ id: i.id, name: `${i.name} (${i.unitLabel})` }));
           this.populateVoucher(voucher);
           this.loading = false;
@@ -230,7 +228,6 @@ export class VendorPurchaseComponent implements OnInit {
     }).subscribe({
       next: ({ vendors, items }) => {
         this.vendorOptions = vendors.map(v => ({ id: v.id, name: v.name }));
-        this.itemOptions = items;
         this.itemSelectOptions = items.map(i => ({ id: i.id, name: `${i.name} (${i.unitLabel})` }));
         this.loading = false;
       },
@@ -305,11 +302,8 @@ export class VendorPurchaseComponent implements OnInit {
     this.linesArray.clear();
     expenseLines.forEach(line => {
       const group = this.createLineGroup();
-      const matchedItem = this.itemOptions.find(item =>
-        item.name.trim().toLowerCase() === (line.itemName || line.freeText || '').trim().toLowerCase()
-      );
       group.patchValue({
-        itemId: matchedItem?.id ?? null,
+        itemId: line.itemId ?? null,
         quantityType: line.quantityType ?? QuantityType.PerPerson,
         quantity: line.quantity,
         rate: line.rate,
@@ -331,7 +325,7 @@ export class VendorPurchaseComponent implements OnInit {
       vendorId: +value.vendorId,
       notes: value.notes || null,
       lines: value.lines.map((line: any) => ({
-        itemName: this.resolveItemName(line.itemId),
+        itemId: line.itemId ? +line.itemId : null,
         quantityType: +line.quantityType,
         quantity: +line.quantity,
         rate: +line.rate,
@@ -348,7 +342,6 @@ export class VendorPurchaseComponent implements OnInit {
         this.voucherNo = res.voucherNo;
         this.masterData.reload();
         this.masterData.loadItems(true).subscribe(items => {
-          this.itemOptions = items;
           this.itemSelectOptions = items.map(i => ({ id: i.id, name: `${i.name} (${i.unitLabel})` }));
         });
         if (this.isEditMode) {
@@ -379,11 +372,5 @@ export class VendorPurchaseComponent implements OnInit {
       rate: [null, [Validators.required, Validators.min(0)]],
       description: ['']
     });
-  }
-
-  private resolveItemName(itemId: number | string | null | undefined): string {
-    const numericId = Number(itemId);
-    const item = this.itemOptions.find(i => i.id === numericId);
-    return item?.name?.trim() ?? '';
   }
 }
