@@ -97,7 +97,7 @@ public class AuthController : ControllerBase
             SameSite = SameSiteMode.Strict,
             Secure = !_environment.IsDevelopment(),
             Expires = DateTimeOffset.UtcNow.AddDays(_jwtOptions.Value.RefreshTokenDays),
-            Path = "/api/auth/refresh"
+            Path = "/api/auth"
         });
     }
 
@@ -109,7 +109,7 @@ public class AuthController : ControllerBase
             SameSite = SameSiteMode.Strict,
             Secure = !_environment.IsDevelopment(),
             Expires = DateTimeOffset.UtcNow.AddDays(-1),
-            Path = "/api/auth/refresh"
+            Path = "/api/auth"
         });
     }
 }
