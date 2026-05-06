@@ -1,140 +1,175 @@
 # PakwaanCrm VPS Deployment Guide
-## Ubuntu 24.04 (Noble) on Hostinger — co-hosted with FreightForwarding
+## Ubuntu VPS with repo-based production config
 
-**VPS:** `72.62.192.1` (same VPS as FreightForwarding V3)
-**Domain:** `panjatancatering.com` (and `www.panjatancatering.com`) — Let's Encrypt SSL
-**Repo:** `https://github.com/MuhammadHaxcan/PakwaanCrm.git` (branch `master`)
+This guide matches the real repo structure you showed on the VPS:
 
-### Stack
-- **Runtime:** .NET 8 (`dotnet-sdk-8.0`, ASP.NET Core 8 runtime)
-- **Database:** PostgreSQL 16 (shared instance with FreightForwarding — separate database `PakwaanCrmDb`)
-- **Web tier:** Nginx + Let's Encrypt SSL (shared instance — new server block)
-- **Frontend:** Angular 17 (built with Node.js 20, served as static files by Nginx)
-- **Backend port:** `5100` (FreightForwarding API uses `5000` — do not change)
+```text
+/var/www/pakwaancrm
+  PakwaanCrm.Backend/
+    src/
+      PakwaanCrm.API/
+  pakwaan-crm-frontend/
+```
 
-### Co-existence with FreightForwarding
+This version does not use a `.env` file.
+Production configuration comes from:
 
-This guide assumes the FreightForwarding V3 deployment (`Backend/FreightForwarding.Backend/deployment/DEPLOYMENT_V3.md`) is **already done** on this VPS. That means the following are already installed and **must not be re-installed or reconfigured**:
+```text
+PakwaanCrm.Backend/src/PakwaanCrm.API/appsettings.Production.json
+```
 
-- PostgreSQL 16 (port 5432, password `1324` for `postgres` user)
-- Nginx
-- Node.js 20
-- Certbot
-- UFW firewall (already permits 80 / 443 / OpenSSH)
-- GitHub SSH key for the `root` account (Step 7.5 of the V3 guide — `git@github.com` works)
+## What is already configured in `appsettings.Production.json`
 
-The only **new** runtime requirement is **.NET 8** (FreightForwarding runs on .NET 10). They install side-by-side cleanly.
+The backend production config now already includes:
+
+- PostgreSQL connection string:
+  `Host=localhost;Port=5432;Database=PakwaanCrmDb;Username=postgres;Password=1324`
+- CORS for:
+  `https://panjatancatering.online`
+  `https://www.panjatancatering.online`
+- JWT config
+- Seed admin:
+  `admin / admin`
+- Swagger disabled in production
+
+Important:
+
+- Change the JWT signing key before going live.
+- Log in with `admin / admin` only once, then change the password immediately.
 
 ---
 
-## Step 1: Point DNS to the VPS
-
-**Do this FIRST.** Certbot in Step 9 will fail until DNS resolves to the VPS.
-
-In the registrar's DNS panel for `panjatancatering.com`, set:
-
-| Type | Name | Value          | TTL  |
-|------|------|----------------|------|
-| A    | `@`  | `72.62.192.1` | 3600 |
-| A    | `www`| `72.62.192.1` | 3600 |
-
-Wait for propagation. Verify from anywhere:
+## Step 1: SSH into the VPS
 
 ```bash
-dig +short panjatancatering.com
-dig +short www.panjatancatering.com
-# Both should return: 72.62.192.1
+ssh root@YOUR_VPS_IP
 ```
 
 ---
 
-## Step 2: Connect to the VPS
+## Step 2: Point DNS to the VPS
+
+Create these DNS records:
+
+| Type | Name | Value |
+|------|------|-------|
+| A | `@` | `YOUR_VPS_IP` |
+| A | `www` | `YOUR_VPS_IP` |
+
+Verify from the VPS:
 
 ```bash
-ssh root@72.62.192.1
+dig +short panjatancatering.online
+dig +short www.panjatancatering.online
 ```
 
-If GitHub SSH auth is **not** already set up on this VPS, follow Step 7.5 of the FreightForwarding V3 guide first. Verify:
+Both should return your VPS IP.
+
+---
+
+## Step 3: Clone the repo
 
 ```bash
-ssh -T git@github.com
-# Expected: "Hi MuhammadHaxcan! ..."
+mkdir -p /var/www
+cd /var/www
+git clone https://github.com/MuhammadHaxcan/PakwaanCrm.git pakwaancrm
+cd /var/www/pakwaancrm
+git checkout master
+```
+
+If the repo already exists:
+
+```bash
+cd /var/www/pakwaancrm
+git pull origin master
 ```
 
 ---
 
-## Step 3: Install .NET 8
-
-The Microsoft package source is already added by the FreightForwarding V3 deploy. Just install the SDK:
-
-```bash
-apt update
-apt install -y dotnet-sdk-8.0
-
-# Both runtimes should now be visible
-dotnet --list-sdks
-# Expected: 8.0.x and 10.0.x
-```
-
-> **Note:** Installing the SDK (not just the runtime) lets `dotnet publish` run on the VPS during updates, matching the FreightForwarding workflow.
-
----
-
-## Step 4: Create the PakwaanCrm Database
-
-The PostgreSQL instance is already running. Just add a new database:
+## Step 4: Create the PostgreSQL database
 
 ```bash
 sudo -u postgres psql -c 'CREATE DATABASE "PakwaanCrmDb";'
-sudo -u postgres psql -l | grep PakwaanCrmDb   # verify
+sudo -u postgres psql -l | grep PakwaanCrmDb
 ```
 
-The `postgres` user password is `1324` (set during the FreightForwarding deploy). PakwaanCrm reuses it via the connection string in Step 6.
+If it already exists, PostgreSQL will tell you.
 
 ---
 
-## Step 5: Generate JWT Signing Key
+## Step 5: Update production appsettings before publish
 
-PakwaanCrm's shared `appsettings.json` ships with a placeholder JWT signing key (`CHANGE_THIS_IN_ENV_TO_A_LONG_RANDOM_SECRET_32+`) that Program.cs's `ValidateOnStart` will reject if left as-is. Generate a real key now and save it for Step 7:
+Go to the backend API folder:
+
+```bash
+cd /var/www/pakwaancrm/PakwaanCrm.Backend/src/PakwaanCrm.API
+```
+
+Edit production config:
+
+```bash
+nano appsettings.Production.json
+```
+
+At minimum, make sure `Jwt:SigningKey` is changed from the placeholder value to a strong secret.
+
+If you want to generate a new key:
 
 ```bash
 openssl rand -base64 64 | tr -d '\n'
 ```
 
-Copy the output. You'll paste it into the systemd unit file in Step 7 as `Jwt__SigningKey`.
+Paste that into `appsettings.Production.json` as the JWT signing key.
+
+Current expected production config shape:
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=PakwaanCrmDb;Username=postgres;Password=1324"
+  },
+  "CorsSettings": {
+    "AllowedOrigins": [
+      "https://panjatancatering.online",
+      "https://www.panjatancatering.online"
+    ]
+  },
+  "Jwt": {
+    "Issuer": "PakwaanCrm",
+    "Audience": "PakwaanCrmClient",
+    "SigningKey": "REPLACE_WITH_A_REAL_LONG_SECRET",
+    "AccessTokenMinutes": 60,
+    "RefreshTokenDays": 7
+  },
+  "SeedAdmin": {
+    "Username": "admin",
+    "Password": "admin",
+    "DisplayName": "System Admin"
+  },
+  "Swagger": {
+    "Enabled": false
+  }
+}
+```
 
 ---
 
-## Step 6: Clone & Publish Backend
+## Step 6: Publish the backend
 
 ```bash
-mkdir -p /var/www
-cd /var/www
+cd /var/www/pakwaancrm/PakwaanCrm.Backend/src/PakwaanCrm.API
+dotnet publish -c Release -o /var/www/pakwaancrm/published/api
 
-git clone https://github.com/MuhammadHaxcan/PakwaanCrm.git pakwaan-backend
-cd pakwaan-backend
-git checkout master
+chown -R www-data:www-data /var/www/pakwaancrm/published/api
+chmod -R 755 /var/www/pakwaancrm/published/api
 ```
 
-> Migrations are **committed** to the repo (`PakwaanCrm.Backend/src/PakwaanCrm.API/Migrations/`) and the API auto-applies them on startup via `db.Database.Migrate()` in `Program.cs`. **No manual `dotnet ef` commands are needed.**
-
-Publish:
-
-```bash
-cd /var/www/pakwaan-backend/PakwaanCrm.Backend/src/PakwaanCrm.API
-dotnet publish -c Release -o /var/www/pakwaan-api
-
-chown -R www-data:www-data /var/www/pakwaan-api
-chmod -R 755 /var/www/pakwaan-api
-```
+No manual migration command is needed.
+The API runs EF Core migrations automatically on startup.
 
 ---
 
-## Step 7: Create Backend systemd Service
-
-Backend listens on `5100` (so it doesn't collide with FreightForwarding's `5000`). Connection string and JWT signing key are passed via `Environment=` rather than edited into `appsettings.json` — this keeps `git pull` clean and keeps secrets off disk in cleartext config files.
-
-Replace `<PASTE_JWT_KEY_HERE>` with the value from Step 5.
+## Step 7: Create the systemd service
 
 ```bash
 cat > /etc/systemd/system/pakwaanapi.service << 'EOF'
@@ -143,34 +178,20 @@ Description=PakwaanCrm API
 After=network.target postgresql.service
 
 [Service]
-WorkingDirectory=/var/www/pakwaan-api
-ExecStart=/usr/bin/dotnet /var/www/pakwaan-api/PakwaanCrm.API.dll
+WorkingDirectory=/var/www/pakwaancrm/published/api
+ExecStart=/usr/bin/dotnet /var/www/pakwaancrm/published/api/PakwaanCrm.API.dll
 Restart=always
 RestartSec=10
 KillSignal=SIGINT
 SyslogIdentifier=pakwaanapi
 User=www-data
-
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=ASPNETCORE_URLS=http://localhost:5100
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 
-# Override appsettings.json — double underscore = nested key
-Environment=ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=PakwaanCrmDb;Username=postgres;Password=1324
-Environment=Jwt__SigningKey=<PASTE_JWT_KEY_HERE>
-Environment=CorsSettings__AllowedOrigins__0=https://panjatancatering.com
-Environment=CorsSettings__AllowedOrigins__1=https://www.panjatancatering.com
-
 [Install]
 WantedBy=multi-user.target
 EOF
-```
-
-Edit the file and replace the placeholder with the JWT key:
-
-```bash
-nano /etc/systemd/system/pakwaanapi.service
-# Replace <PASTE_JWT_KEY_HERE> with the value generated in Step 5, save & exit
 ```
 
 Enable and start:
@@ -179,22 +200,16 @@ Enable and start:
 systemctl daemon-reload
 systemctl enable pakwaanapi
 systemctl start pakwaanapi
-systemctl status pakwaanapi
+systemctl status pakwaanapi --no-pager
 ```
 
-The first start will run all committed migrations against the empty `PakwaanCrmDb`.
-
-For a brand-new production database, add these lines to the service file before the first start so the initial admin can be created explicitly:
+Check logs if needed:
 
 ```bash
-Environment=SeedAdmin__Username=admin
-Environment=SeedAdmin__Password=<strong-initial-password>
-Environment=SeedAdmin__DisplayName=System Admin
+journalctl -u pakwaanapi -n 100 --no-pager
 ```
 
-After the first admin has been created successfully, remove those three lines and restart the service.
-
-Sanity-check it's listening:
+Check the backend port:
 
 ```bash
 ss -tlnp | grep 5100
@@ -203,98 +218,90 @@ curl http://localhost:5100/swagger/index.html | head -5
 
 ---
 
-## Step 8: Clone, Build & Deploy Frontend
+## Step 8: Build and deploy the frontend
 
 ```bash
-cd /var/www
-git clone https://github.com/MuhammadHaxcan/PakwaanCrm.git pakwaan-frontend-src
-
-# (Same repo as backend; we just keep a separate working copy for the frontend.)
-cd /var/www/pakwaan-frontend-src/PakwaanCrm/pakwaan-crm-frontend
-
+cd /var/www/pakwaancrm/pakwaan-crm-frontend
 npm install
 npm run build
 
-mkdir -p /var/www/pakwaan-frontend
-cp -r dist/pakwaan-crm-frontend/browser/* /var/www/pakwaan-frontend/
+mkdir -p /var/www/pakwaancrm/published/frontend
+rm -rf /var/www/pakwaancrm/published/frontend/*
+cp -r dist/pakwaan-crm-frontend/browser/* /var/www/pakwaancrm/published/frontend/
 
-chown -R www-data:www-data /var/www/pakwaan-frontend
-chmod -R 755 /var/www/pakwaan-frontend
+chown -R www-data:www-data /var/www/pakwaancrm/published/frontend
+chmod -R 755 /var/www/pakwaancrm/published/frontend
 ```
 
-> **Why `dist/pakwaan-crm-frontend/browser/`?** Angular 17's application builder writes the SPA assets into a `browser/` subdirectory. There is no `dist/index.html` directly.
->
-> **Why no `.env`?** The frontend uses relative `/api` URLs (see `src/app/core/services/api.service.ts:8`). Nginx proxies `/api/` to `http://localhost:5100/api/` — no build-time API URL to configure.
+The frontend already uses relative `/api`, so no frontend environment setup is needed.
 
 ---
 
-## Step 9: Issue Let's Encrypt Certificate
-
-DNS must already point at the VPS (Step 1). Stand up a **temporary HTTP-only** Nginx config for `panjatancatering.com` so certbot can complete the HTTP-01 challenge:
+## Step 9: Temporary Nginx config for certificate issuance
 
 ```bash
 cat > /etc/nginx/sites-available/pakwaancrm << 'EOF'
 server {
     listen 80;
-    server_name panjatancatering.com www.panjatancatering.com;
+    server_name panjatancatering.online www.panjatancatering.online;
 
     location / {
-        root /var/www/pakwaan-frontend;
+        root /var/www/pakwaancrm/published/frontend;
         index index.html;
         try_files $uri $uri/ /index.html;
     }
 }
 EOF
 
-ln -sf /etc/nginx/sites-available/pakwaancrm /etc/nginx/sites-enabled/
+ln -sf /etc/nginx/sites-available/pakwaancrm /etc/nginx/sites-enabled/pakwaancrm
 nginx -t
 systemctl reload nginx
 ```
 
-Issue the cert (covers both apex and `www`):
+---
+
+## Step 10: Issue SSL certificate
 
 ```bash
 certbot --nginx \
-  -d panjatancatering.com \
-  -d www.panjatancatering.com \
+  -d panjatancatering.online \
+  -d www.panjatancatering.online \
   --non-interactive --agree-tos -m your-email@example.com
+```
 
-certbot renew --dry-run    # verify auto-renewal works
+Verify renewal:
+
+```bash
+certbot renew --dry-run
 ```
 
 ---
 
-## Step 10: Replace with Full Nginx Config (HTTPS + API proxy)
-
-Now that certbot has placed the certs, swap the temporary HTTP-only block for the full SSL + API-proxy version. **This file does not touch the FreightForwarding server block** (separate file, separate `server_name`).
+## Step 11: Replace Nginx config with final HTTPS config
 
 ```bash
 cat > /etc/nginx/sites-available/pakwaancrm << 'EOF'
-# HTTP -> HTTPS redirect (apex + www)
 server {
     listen 80;
-    server_name panjatancatering.com www.panjatancatering.com;
+    server_name panjatancatering.online www.panjatancatering.online;
     return 301 https://$host$request_uri;
 }
 
-# HTTPS — apex
 server {
     listen 443 ssl;
-    server_name panjatancatering.com www.panjatancatering.com;
+    server_name panjatancatering.online www.panjatancatering.online;
 
-    ssl_certificate /etc/letsencrypt/live/panjatancatering.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/panjatancatering.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/panjatancatering.online/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/panjatancatering.online/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    # Frontend (Angular SPA)
     location / {
-        root /var/www/pakwaan-frontend;
+        root /var/www/pakwaancrm/published/frontend;
         index index.html;
         try_files $uri $uri/ /index.html;
     }
 
-    # Backend API
     location /api/ {
         proxy_pass http://localhost:5100/api/;
         proxy_http_version 1.1;
@@ -306,13 +313,10 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
         proxy_buffering off;
-
-        # Voucher / report PDFs can be large — bump body & response timeouts
         client_max_body_size 25m;
         proxy_read_timeout 120s;
     }
 
-    # Swagger (optional — remove these 5 lines to hide it on production)
     location /swagger/ {
         proxy_pass http://localhost:5100/swagger/;
         proxy_http_version 1.1;
@@ -330,176 +334,154 @@ systemctl reload nginx
 
 ---
 
-## Step 11: Verify
+## Step 12: Verify everything
 
 ```bash
-systemctl status postgresql
-systemctl status pakwaanapi
-systemctl status nginx
+systemctl status postgresql --no-pager
+systemctl status nginx --no-pager
+systemctl status pakwaanapi --no-pager
 
-# Backend up?
 curl http://localhost:5100/swagger/index.html | head -5
-
-# Public site reachable over HTTPS?
-curl -I https://panjatancatering.com
-curl -I https://www.panjatancatering.com
-
-# Login endpoint (should reject empty body with 400, NOT 502)
-curl -X POST https://panjatancatering.com/api/auth/login \
-     -H "Content-Type: application/json" -d '{}'
+curl -I https://panjatancatering.online
+curl -I https://www.panjatancatering.online
+curl -X POST https://panjatancatering.online/api/auth/login -H "Content-Type: application/json" -d '{}'
 ```
 
-Open in the browser:
-- App: https://panjatancatering.com
-- Swagger: https://panjatancatering.com/swagger
-- Sign in with `admin / admin` and **change the password immediately**.
+Expected:
+
+- Backend is reachable on `localhost:5100`
+- Site loads over HTTPS
+- Login endpoint returns an application response, not `502`
+
+Then open:
+
+- `https://panjatancatering.online`
+- `https://panjatancatering.online/swagger`
+
+Sign in with:
+
+- Username: `admin`
+- Password: `admin`
+
+Change the password immediately after first login.
 
 ---
 
-## Update & Redeploy Script
+## Update and redeploy commands
 
 ```bash
-cat > /var/www/pakwaan-update.sh << 'EOF'
+cd /var/www/pakwaancrm
+git pull origin master
+
+cd /var/www/pakwaancrm/PakwaanCrm.Backend/src/PakwaanCrm.API
+dotnet publish -c Release -o /var/www/pakwaancrm/published/api
+chown -R www-data:www-data /var/www/pakwaancrm/published/api
+chmod -R 755 /var/www/pakwaancrm/published/api
+systemctl restart pakwaanapi
+
+cd /var/www/pakwaancrm/pakwaan-crm-frontend
+npm install
+npm run build
+rm -rf /var/www/pakwaancrm/published/frontend/*
+cp -r dist/pakwaan-crm-frontend/browser/* /var/www/pakwaancrm/published/frontend/
+chown -R www-data:www-data /var/www/pakwaancrm/published/frontend
+chmod -R 755 /var/www/pakwaancrm/published/frontend
+systemctl reload nginx
+```
+
+---
+
+## Optional update script
+
+```bash
+cat > /var/www/pakwaancrm/update.sh << 'EOF'
 #!/bin/bash
 set -e
 
-echo "=== Updating PakwaanCrm ==="
-
-# Backend
-echo "[1/3] Updating backend..."
-cd /var/www/pakwaan-backend
+cd /var/www/pakwaancrm
 git pull origin master
 
-cd PakwaanCrm.Backend/src/PakwaanCrm.API
-dotnet publish -c Release -o /var/www/pakwaan-api
-chown -R www-data:www-data /var/www/pakwaan-api
-chmod -R 755 /var/www/pakwaan-api
-
-# Restart API — migrations auto-apply on startup
-echo "[2/3] Restarting API service..."
+cd /var/www/pakwaancrm/PakwaanCrm.Backend/src/PakwaanCrm.API
+dotnet publish -c Release -o /var/www/pakwaancrm/published/api
+chown -R www-data:www-data /var/www/pakwaancrm/published/api
+chmod -R 755 /var/www/pakwaancrm/published/api
 systemctl restart pakwaanapi
 
-# Frontend
-echo "[3/3] Updating frontend..."
-cd /var/www/pakwaan-frontend-src/PakwaanCrm/pakwaan-crm-frontend
-git pull origin master
+cd /var/www/pakwaancrm/pakwaan-crm-frontend
 npm install
 npm run build
-rm -rf /var/www/pakwaan-frontend/*
-cp -r dist/pakwaan-crm-frontend/browser/* /var/www/pakwaan-frontend/
-chown -R www-data:www-data /var/www/pakwaan-frontend
-chmod -R 755 /var/www/pakwaan-frontend
-
+rm -rf /var/www/pakwaancrm/published/frontend/*
+cp -r dist/pakwaan-crm-frontend/browser/* /var/www/pakwaancrm/published/frontend/
+chown -R www-data:www-data /var/www/pakwaancrm/published/frontend
+chmod -R 755 /var/www/pakwaancrm/published/frontend
 systemctl reload nginx
-
-echo "=== Update complete ==="
-systemctl status pakwaanapi --no-pager | head -15
 EOF
 
-chmod +x /var/www/pakwaan-update.sh
+chmod +x /var/www/pakwaancrm/update.sh
 ```
 
-To deploy the latest code:
+Run:
 
 ```bash
-/var/www/pakwaan-update.sh
+/var/www/pakwaancrm/update.sh
 ```
-
-> Migrations stay in sync automatically: the API runs `db.Database.Migrate()` on startup, and `systemctl restart pakwaanapi` is part of the script.
 
 ---
 
-## Useful Commands
+## Useful commands
 
 ```bash
-# Live logs
 journalctl -u pakwaanapi -f
-journalctl -u pakwaanapi -n 100
-
-# Restart
+journalctl -u pakwaanapi -n 100 --no-pager
 systemctl restart pakwaanapi
 systemctl reload nginx
-
-# DB shell
 sudo -u postgres psql -d PakwaanCrmDb
-
-# List applied migrations
 sudo -u postgres psql -d PakwaanCrmDb -c 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId";'
-
-# Check certs
 certbot certificates
-```
-
----
-
-## Database Reset (DESTRUCTIVE — wipes all PakwaanCrm data)
-
-```bash
-systemctl stop pakwaanapi
-sudo -u postgres psql -c 'DROP DATABASE IF EXISTS "PakwaanCrmDb";'
-sudo -u postgres psql -c 'CREATE DATABASE "PakwaanCrmDb";'
-systemctl start pakwaanapi
-# Migrations + seed admin will run again on startup.
 ```
 
 ---
 
 ## Troubleshooting
 
-### API not starting
+### API fails to start
+
 ```bash
-journalctl -u pakwaanapi -n 80
+journalctl -u pakwaanapi -n 100 --no-pager
 ss -tlnp | grep 5100
 ```
-Most common causes:
-- `Jwt__SigningKey` placeholder still in the unit file → `ValidateOnStart` throws.
-- Port 5100 already taken (`ss -tlnp | grep 5100`).
-- DB connection refused → check `systemctl status postgresql` and confirm `PakwaanCrmDb` exists.
-- No production seed admin was configured for a brand-new database → add the `SeedAdmin__...` environment variables from Step 7, start once, then remove them.
 
-### 502 from `/api/...`
-Backend is down. `systemctl status pakwaanapi`, then check `journalctl`.
+Common causes:
 
-### 404 on a deep-linked SPA route after refresh
-`try_files $uri $uri/ /index.html;` is missing from the `location /` block. Re-apply Step 10 config.
+- `Jwt:SigningKey` in `appsettings.Production.json` is still weak or malformed
+- PostgreSQL is down
+- Database `PakwaanCrmDb` does not exist
+- Port `5100` is already in use
 
-### Certbot fails with "Connection refused" or "DNS problem"
-DNS hasn't propagated yet (Step 1). `dig +short panjatancatering.com` must return `72.62.192.1` from the VPS itself before retrying.
+### 502 on `/api`
 
-### CORS errors in the browser console
-The systemd `Environment=CorsSettings__AllowedOrigins__N=...` lines in Step 7 are how you add allowed origins. Restart the API after editing:
 ```bash
-systemctl daemon-reload
-systemctl restart pakwaanapi
+systemctl status pakwaanapi --no-pager
+journalctl -u pakwaanapi -n 100 --no-pager
 ```
 
----
+### SPA route refresh gives 404
 
-## Configuration Files Summary
+Make sure this exists in Nginx:
 
-### Backend
-| File | Environment | Notes |
-|------|-------------|-------|
-| `appsettings.json` | All | Shared defaults only. Keep secrets and real production origins out of this file. |
-| `appsettings.Development.json` | Development only | Local DB string, local CORS origins, dev seed admin, Swagger enabled. |
-| `appsettings.Production.json` | Production only | Swagger disabled by default. Production secrets and origins should still come from systemd `Environment=` lines. |
+```nginx
+try_files $uri $uri/ /index.html;
+```
 
-### Server
-| Path | Purpose |
-|------|---------|
-| `/etc/systemd/system/pakwaanapi.service` | .NET API systemd unit (port 5100, holds runtime secrets) |
-| `/etc/nginx/sites-available/pakwaancrm` | Nginx server block for `panjatancatering.com` (separate from FreightForwarding) |
-| `/etc/letsencrypt/live/panjatancatering.com/` | TLS certs (auto-renew via certbot timer) |
-| `/var/www/pakwaan-backend/` | Backend git checkout |
-| `/var/www/pakwaan-api/` | Published backend (what systemd runs) |
-| `/var/www/pakwaan-frontend-src/` | Frontend git checkout |
-| `/var/www/pakwaan-frontend/` | Built static SPA (what Nginx serves) |
-| `/var/www/pakwaan-update.sh` | One-shot update + redeploy script |
+### CORS issues
 
-### Port allocation on this VPS
-| Service                  | Port  |
-|--------------------------|-------|
-| FreightForwarding API    | 5000  |
-| **PakwaanCrm API**       | **5100** |
-| PostgreSQL               | 5432  |
-| Nginx (HTTP/HTTPS)       | 80 / 443 |
+Make sure these production origins exist in `appsettings.Production.json`:
+
+```json
+"CorsSettings": {
+  "AllowedOrigins": [
+    "https://panjatancatering.online",
+    "https://www.panjatancatering.online"
+  ]
+}
+```
