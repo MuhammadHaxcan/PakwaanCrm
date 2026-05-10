@@ -44,7 +44,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
               <input matInput [(ngModel)]="voucherNo" name="voucherNo" placeholder="e.g. SV-0001" />
             </mat-form-field>
 
-            <button mat-flat-button color="primary" type="submit" [disabled]="loading || !normalizedVoucherNo" style="height:46px;padding:0 22px">
+            <button mat-flat-button color="primary" type="submit" [disabled]="loading || !normalizedVoucherNo" class="lookup-button">
               <mat-icon>search</mat-icon>
               <span>Find Voucher</span>
             </button>
@@ -56,7 +56,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
 
           <ng-container *ngIf="voucher && !loading">
             <div class="filter-panel" style="margin-top:18px;margin-bottom:18px">
-              <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+              <div class="voucher-summary">
                 <div>
                   <h3 style="margin:0 0 6px;font-size:18px">{{ voucher.voucherNo }}</h3>
                   <div class="text-muted" style="font-size:13px">
@@ -66,7 +66,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
                   <div *ngIf="voucher.notes" style="margin-top:6px;font-size:12px;color:#64748b">Notes: {{ voucher.notes }}</div>
                 </div>
 
-                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <div class="voucher-actions">
                   <button mat-stroked-button color="primary" type="button" (click)="editVoucher()">
                     <mat-icon>edit</mat-icon>
                     <span>Edit Voucher</span>
@@ -78,7 +78,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
                 </div>
               </div>
 
-              <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px">
+              <div class="voucher-totals">
                 <div class="chip-zero">Debit: {{ totalDebit | number:'1.2-2' }}</div>
                 <div class="chip-zero">Credit: {{ totalCredit | number:'1.2-2' }}</div>
               </div>
@@ -114,7 +114,46 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
         </mat-card-content>
       </mat-card>
     </div>
-  `
+  `,
+  styles: [`
+    .lookup-button {
+      height: 46px;
+      padding: 0 22px;
+    }
+
+    .voucher-summary {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .voucher-actions,
+    .voucher-totals {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .voucher-totals {
+      gap: 16px;
+      margin-top: 14px;
+    }
+
+    @media (max-width: 640px) {
+      .lookup-button,
+      .voucher-actions button {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .voucher-actions,
+      .voucher-totals {
+        width: 100%;
+      }
+    }
+  `]
 })
 export class VoucherLookupComponent {
   private api = inject(ApiService);

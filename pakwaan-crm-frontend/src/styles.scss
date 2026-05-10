@@ -195,6 +195,7 @@ html, body {
 /* ── Modern grid table ──────────────────────────────────────── */
 .line-grid {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: var(--r-md);
   border: 1px solid var(--c-border);
   box-shadow: var(--shadow-sm);
@@ -310,6 +311,7 @@ html, body {
   gap: 10px;
   align-items: center;
   margin-top: 14px;
+  flex-wrap: wrap;
 }
 
 /* ── Utility ────────────────────────────────────────────────── */
@@ -412,14 +414,56 @@ table.full-width { width: 100%; }
     padding: 20px 14px;
   }
 
+  .page-header {
+    align-items: flex-start;
+    margin-bottom: 18px;
+
+    .ph-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+    }
+
+    .ph-text h2 {
+      font-size: 18px;
+    }
+  }
+
   .form-row {
     gap: 12px;
   }
 
   .field-stack,
-  .form-row mat-form-field {
+  .form-row mat-form-field,
+  .form-row app-searchable-select {
     min-width: 100%;
     flex-basis: 100%;
+  }
+
+  .filter-panel {
+    padding: 14px 14px 12px;
+  }
+
+  .line-grid {
+    margin-left: -14px;
+    margin-right: -14px;
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+
+    table {
+      min-width: 720px;
+    }
+  }
+
+  .grid-actions,
+  .export-row {
+    gap: 12px;
+  }
+
+  .grid-actions > *,
+  .export-row > * {
+    flex: 1 1 180px;
   }
 
   .inline-input.w-fixed {
@@ -434,4 +478,40 @@ table.full-width { width: 100%; }
   gap: 8px;
   align-items: center;
   margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .page-container {
+    padding: 16px 12px 22px;
+  }
+
+  .page-header {
+    gap: 12px;
+  }
+
+  .line-grid {
+    margin-left: -12px;
+    margin-right: -12px;
+  }
+
+  .grid-actions > *,
+  .export-row > * {
+    flex: 1 1 100%;
+  }
+
+  .grid-actions .spacer {
+    display: none;
+  }
+
+  .grid-actions button,
+  .export-row button,
+  .export-row a,
+  .form-row button[type='submit'] {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .amount-display {
+    font-size: 13px;
+  }
 }
