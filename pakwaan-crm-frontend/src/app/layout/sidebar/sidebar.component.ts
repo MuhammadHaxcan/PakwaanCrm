@@ -30,6 +30,10 @@ import { AuthService } from '../../core/services/auth.service';
           <div class="nav-icon-wrap"><mat-icon>receipt_long</mat-icon></div>
           <span>Sales Voucher</span>
         </a>
+        <a class="nav-item" routerLink="/sales-voucher/customer-dates" routerLinkActive="nav-active">
+          <div class="nav-icon-wrap"><mat-icon>event_note</mat-icon></div>
+          <span>Customer Date-wise Sales</span>
+        </a>
         <a class="nav-item" routerLink="/vendor-purchases" routerLinkActive="nav-active">
           <div class="nav-icon-wrap"><mat-icon>inventory_2</mat-icon></div>
           <span>Vendor Purchase</span>

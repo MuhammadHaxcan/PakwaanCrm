@@ -236,7 +236,7 @@ namespace PakwaanCrm.API.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("Date")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("date");
 
                     b.Property<string>("Description")
                         .HasColumnType("text");

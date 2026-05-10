@@ -48,8 +48,8 @@ public class ReportService : IReportService
             return null;
         }
 
-        var fromDate = NormalizeUtcDate(startDate)?.Date;
-        var toExclusive = NormalizeUtcDate(endDate)?.Date.AddDays(1);
+        var fromDate = NormalizeDate(startDate);
+        var toExclusive = NormalizeDate(endDate)?.AddDays(1);
 
         var accountLinesQuery = isCustomer
             ? _context.VoucherLines.Include(l => l.Voucher).Where(l => l.CustomerId == accountId)
@@ -122,8 +122,8 @@ public class ReportService : IReportService
         int page, int pageSize,
         CancellationToken ct = default)
     {
-        var fromDate = NormalizeUtcDate(startDate)?.Date;
-        var toExclusive = NormalizeUtcDate(endDate)?.Date.AddDays(1);
+        var fromDate = NormalizeDate(startDate);
+        var toExclusive = NormalizeDate(endDate)?.AddDays(1);
 
         var query = _context.VoucherLines
             .Include(l => l.Voucher)
@@ -256,8 +256,8 @@ public class ReportService : IReportService
         int? voucherType,
         CancellationToken ct = default)
     {
-        var fromDate = NormalizeUtcDate(startDate)?.Date;
-        var toExclusive = NormalizeUtcDate(endDate)?.Date.AddDays(1);
+        var fromDate = NormalizeDate(startDate);
+        var toExclusive = NormalizeDate(endDate)?.AddDays(1);
         var result = new List<AccountBalanceDto>();
 
         var includeCustomers = !vendorId.HasValue || customerId.HasValue;
@@ -447,16 +447,11 @@ public class ReportService : IReportService
         return debit - credit;
     }
 
-    private static DateTime? NormalizeUtcDate(DateTime? value)
+    private static DateTime? NormalizeDate(DateTime? value)
     {
         if (!value.HasValue) return null;
         var date = value.Value;
-        return date.Kind switch
-        {
-            DateTimeKind.Utc => date,
-            DateTimeKind.Local => date.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(date, DateTimeKind.Utc)
-        };
+        return new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Unspecified);
     }
 
     private static string GetVoucherTypeLabel(VoucherType voucherType) => voucherType switch

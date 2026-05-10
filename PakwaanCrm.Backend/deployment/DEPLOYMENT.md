@@ -167,6 +167,21 @@ chmod -R 755 /var/www/pakwaancrm/published/api
 No manual migration command is needed.
 The API runs EF Core migrations automatically on startup.
 
+If you want to apply migrations manually before starting or restarting the service, use the production config explicitly:
+
+```bash
+cd /var/www/pakwaancrm/PakwaanCrm.Backend/src/PakwaanCrm.API
+ASPNETCORE_ENVIRONMENT=Production dotnet ef database update
+```
+
+Why this works:
+
+- `appsettings.Production.json` already contains the production PostgreSQL connection string.
+- Setting `ASPNETCORE_ENVIRONMENT=Production` makes EF tooling load `appsettings.Production.json`.
+- So you do not need to pass a separate connection string on the command line.
+
+If you do not run the command above manually, the app still applies migrations automatically on startup via `db.Database.Migrate()`.
+
 ---
 
 ## Step 7: Create the systemd service
@@ -367,6 +382,46 @@ Change the password immediately after first login.
 
 ---
 
+## Migration notes
+
+### To apply existing migrations against production
+
+```bash
+cd /var/www/pakwaancrm/PakwaanCrm.Backend/src/PakwaanCrm.API
+ASPNETCORE_ENVIRONMENT=Production dotnet ef database update
+```
+
+### To create a new migration later
+
+If you change entities or EF model configuration in the future, create and commit a new migration from the API project folder:
+
+```bash
+cd /var/www/pakwaancrm/PakwaanCrm.Backend/src/PakwaanCrm.API
+ASPNETCORE_ENVIRONMENT=Production dotnet ef migrations add YourMigrationName
+```
+
+If you want the migration created directly on the VPS using the production config, the command above is the one to use.
+
+Then apply it with:
+
+```bash
+ASPNETCORE_ENVIRONMENT=Production dotnet ef database update
+```
+
+If you are using the current repo setup where `Migrations/` is ignored in git, the migration files created on the VPS will stay only on the server unless you remove that ignore rule later.
+
+If you only want the VPS database updated and do not care about committing migration files, that is fine for your current workflow.
+
+If you just want to apply the already-existing migrations and not create a new one, run:
+
+```bash
+ASPNETCORE_ENVIRONMENT=Production dotnet ef database update
+```
+
+Or just restart the app after publish and let `db.Database.Migrate()` apply it automatically.
+
+---
+
 ## Update and redeploy commands
 
 ```bash
@@ -374,6 +429,7 @@ cd /var/www/pakwaancrm
 git pull origin master
 
 cd /var/www/pakwaancrm/PakwaanCrm.Backend/src/PakwaanCrm.API
+ASPNETCORE_ENVIRONMENT=Production dotnet ef database update
 dotnet publish -c Release -o /var/www/pakwaancrm/published/api
 chown -R www-data:www-data /var/www/pakwaancrm/published/api
 chmod -R 755 /var/www/pakwaancrm/published/api
@@ -402,6 +458,7 @@ cd /var/www/pakwaancrm
 git pull origin master
 
 cd /var/www/pakwaancrm/PakwaanCrm.Backend/src/PakwaanCrm.API
+ASPNETCORE_ENVIRONMENT=Production dotnet ef database update
 dotnet publish -c Release -o /var/www/pakwaancrm/published/api
 chown -R www-data:www-data /var/www/pakwaancrm/published/api
 chmod -R 755 /var/www/pakwaancrm/published/api

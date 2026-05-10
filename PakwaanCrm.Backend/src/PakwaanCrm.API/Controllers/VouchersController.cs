@@ -60,6 +60,13 @@ public class VouchersController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
     }
 
+    [HttpPost("sales/customer-dates")]
+    public async Task<IActionResult> CreateCustomerDateSales([FromBody] CreateCustomerDateSalesVoucherRequest request, CancellationToken ct)
+    {
+        var result = await _service.CreateCustomerDateSalesVoucherAsync(request, ct);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
+    }
+
     [HttpPut("{id:int}/sales")]
     public async Task<IActionResult> UpdateSales(int id, [FromBody] CreateSalesVoucherRequest request, CancellationToken ct)
     {

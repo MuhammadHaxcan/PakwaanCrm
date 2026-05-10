@@ -10,9 +10,26 @@ public class CreateSalesVoucherRequest
     public List<SalesLineRequest> Lines { get; set; } = new();
 }
 
+public class CreateCustomerDateSalesVoucherRequest
+{
+    public int CustomerId { get; set; }
+    public string? Notes { get; set; }
+    public List<CustomerDateSalesLineRequest> Lines { get; set; } = new();
+}
+
 public class SalesLineRequest
 {
     public int CustomerId { get; set; }
+    public int ItemId { get; set; }
+    public QuantityType QuantityType { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal Rate { get; set; }
+    public string? Description { get; set; }
+}
+
+public class CustomerDateSalesLineRequest
+{
+    public DateTime Date { get; set; }
     public int ItemId { get; set; }
     public QuantityType QuantityType { get; set; }
     public decimal Quantity { get; set; }

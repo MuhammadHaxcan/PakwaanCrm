@@ -82,6 +82,21 @@ export interface CreateSalesVoucherRequest {
   date: string; description?: string; notes?: string; lines: SalesLineRequest[];
 }
 
+export interface CustomerDateSalesLineRequest {
+  date: string;
+  itemId: number;
+  quantityType: QuantityType;
+  quantity: number;
+  rate: number;
+  description?: string;
+}
+
+export interface CreateCustomerDateSalesVoucherRequest {
+  customerId: number;
+  notes?: string;
+  lines: CustomerDateSalesLineRequest[];
+}
+
 export interface GeneralLineRequest {
   entryType: EntryType; customerId?: number; vendorId?: number; accountId?: number;
   freeText?: string; description?: string; debit: number; credit: number;

@@ -96,6 +96,78 @@ public class VoucherService : IVoucherService
         });
     }
 
+    public async Task<Result<SalesVoucherCreateResultDto>> CreateCustomerDateSalesVoucherAsync(CreateCustomerDateSalesVoucherRequest request, CancellationToken ct = default)
+    {
+        var validation = ValidateCustomerDateSalesRequest(request);
+        if (!validation.IsSuccess) return Result<SalesVoucherCreateResultDto>.Failure(validation.Error!);
+
+        var dateGroups = request.Lines
+            .Where(line => line.Quantity > 0 && line.Rate >= 0)
+            .Select(line => new
+            {
+                Date = NormalizeDate(line.Date),
+                Line = line
+            })
+            .GroupBy(entry => entry.Date)
+            .OrderBy(group => group.Key)
+            .ToList();
+
+        var firstVoucherNo = await _repo.GenerateVoucherNumberAsync("SV-", ct);
+        var nextNumber = ParseVoucherNumber(firstVoucherNo, "SV-");
+        var createdVoucherEntities = new List<Voucher>();
+
+        foreach (var group in dateGroups)
+        {
+            var voucher = new Voucher
+            {
+                VoucherNo = $"SV-{nextNumber:D4}",
+                VoucherType = VoucherType.Sales
+            };
+
+            nextNumber++;
+
+            var salesRequest = new CreateSalesVoucherRequest
+            {
+                Date = group.Key,
+                Notes = request.Notes,
+                Lines = group
+                    .Select(entry => new SalesLineRequest
+                    {
+                        CustomerId = request.CustomerId,
+                        ItemId = entry.Line.ItemId,
+                        QuantityType = entry.Line.QuantityType,
+                        Quantity = entry.Line.Quantity,
+                        Rate = entry.Line.Rate,
+                        Description = entry.Line.Description
+                    })
+                    .ToList()
+            };
+
+            ApplyVoucherHeader(voucher, salesRequest.Date, salesRequest.Description, salesRequest.Notes);
+            ReplaceSalesLines(voucher, salesRequest);
+
+            await _repo.AddAsync(voucher, ct);
+            createdVoucherEntities.Add(voucher);
+        }
+
+        await _repo.SaveChangesAsync(ct);
+
+        var savedVouchers = new List<VoucherDetailDto>();
+        foreach (var voucher in createdVoucherEntities.OrderBy(v => v.VoucherNo))
+        {
+            var saved = await _repo.GetWithLinesAsync(voucher.Id, ct);
+            if (saved != null)
+                savedVouchers.Add(_mapper.Map<VoucherDetailDto>(saved));
+        }
+
+        return Result<SalesVoucherCreateResultDto>.Success(new SalesVoucherCreateResultDto
+        {
+            CreatedCount = savedVouchers.Count,
+            VoucherNos = savedVouchers.Select(v => v.VoucherNo).ToList(),
+            Vouchers = savedVouchers
+        });
+    }
+
     public async Task<Result<VoucherDetailDto>> UpdateSalesVoucherAsync(int id, CreateSalesVoucherRequest request, CancellationToken ct = default)
     {
         var validation = ValidateSalesRequest(request);
@@ -223,6 +295,26 @@ public class VoucherService : IVoucherService
         return Result.Success();
     }
 
+    private static Result ValidateCustomerDateSalesRequest(CreateCustomerDateSalesVoucherRequest request)
+    {
+        if (request.CustomerId <= 0)
+            return Result.Failure("Customer is required.");
+
+        if (request.Lines == null || request.Lines.Count == 0)
+            return Result.Failure("At least one sales line is required.");
+
+        if (request.Lines.Any(line => line.Date == default))
+            return Result.Failure("Each sales line requires a valid date.");
+
+        if (request.Lines.Any(line => line.ItemId <= 0))
+            return Result.Failure("Each sales line requires an item.");
+
+        if (request.Lines.Any(line => line.Quantity <= 0 || line.Rate < 0))
+            return Result.Failure("Each sales line must have a quantity greater than zero.");
+
+        return Result.Success();
+    }
+
     private static Result ValidateGeneralRequest(CreateGeneralVoucherRequest request)
     {
         if (request.Lines == null || request.Lines.Count < 2)
@@ -298,7 +390,7 @@ public class VoucherService : IVoucherService
 
     private void ApplyVoucherHeader(Voucher voucher, DateTime date, string? description, string? notes)
     {
-        voucher.Date = NormalizeUtcDate(date);
+        voucher.Date = NormalizeDate(date);
         voucher.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         voucher.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
     }
@@ -429,15 +521,6 @@ public class VoucherService : IVoucherService
         return 1;
     }
 
-    private static DateTime NormalizeUtcDate(DateTime date)
-    {
-        var normalizedDate = date.Kind switch
-        {
-            DateTimeKind.Utc => date,
-            DateTimeKind.Local => date.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(date, DateTimeKind.Utc)
-        };
-
-        return normalizedDate;
-    }
+    private static DateTime NormalizeDate(DateTime date)
+        => new(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Unspecified);
 }

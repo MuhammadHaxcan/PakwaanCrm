@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Customer>().Property(e => e.OpeningBalance).HasPrecision(18, 2);
         modelBuilder.Entity<Vendor>().Property(e => e.OpeningBalance).HasPrecision(18, 2);
         modelBuilder.Entity<Item>().Property(e => e.DefaultRate).HasPrecision(18, 4);
+        modelBuilder.Entity<Voucher>().Property(e => e.Date).HasColumnType("date");
 
         modelBuilder.Entity<VoucherLine>().Property(e => e.Debit).HasPrecision(18, 2);
         modelBuilder.Entity<VoucherLine>().Property(e => e.Credit).HasPrecision(18, 2);

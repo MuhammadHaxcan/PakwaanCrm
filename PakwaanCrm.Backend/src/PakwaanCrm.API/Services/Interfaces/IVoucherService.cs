@@ -10,6 +10,7 @@ public interface IVoucherService
     Task<VoucherDetailDto?> GetByIdAsync(int id, CancellationToken ct = default);
     Task<VoucherDetailDto?> GetByVoucherNoAsync(string voucherNo, CancellationToken ct = default);
     Task<Result<SalesVoucherCreateResultDto>> CreateSalesVoucherAsync(CreateSalesVoucherRequest request, CancellationToken ct = default);
+    Task<Result<SalesVoucherCreateResultDto>> CreateCustomerDateSalesVoucherAsync(CreateCustomerDateSalesVoucherRequest request, CancellationToken ct = default);
     Task<Result<VoucherDetailDto>> UpdateSalesVoucherAsync(int id, CreateSalesVoucherRequest request, CancellationToken ct = default);
     Task<Result<VoucherDetailDto>> CreateGeneralVoucherAsync(CreateGeneralVoucherRequest request, CancellationToken ct = default);
     Task<Result<VoucherDetailDto>> UpdateGeneralVoucherAsync(int id, CreateGeneralVoucherRequest request, CancellationToken ct = default);
