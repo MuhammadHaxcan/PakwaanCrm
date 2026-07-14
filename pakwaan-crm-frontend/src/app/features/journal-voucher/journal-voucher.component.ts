@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, HostListener, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { ReactiveFormsModule, FormArray, FormBuilder, FormGroup, Validators } from '@angular/forms';
@@ -85,6 +85,7 @@ import { JOURNAL_ENTRY_TYPE_OPTIONS, JOURNAL_ENTRY_TYPE_SELECT_OPTIONS } from '.
                   <tr *ngFor="let line of linesArray.controls; let i = index" [formGroupName]="i">
                     <td>
                       <app-searchable-select
+                        #rowEntryTypeSelect
                         [options]="entryTypeSelectOptions"
                         placeholder="Entry Type"
                         formControlName="entryType">
@@ -121,6 +122,8 @@ import { JOURNAL_ENTRY_TYPE_OPTIONS, JOURNAL_ENTRY_TYPE_SELECT_OPTIONS } from '.
                       <input type="number" class="inline-input w-fixed" formControlName="debit"
                         placeholder="0.00" min="0" step="0.01"
                         [disabled]="isDebitLocked(i)"
+                        [readonly]="isAutoBalancingLine(i)"
+                        [class.auto-calculated]="isAutoBalancingLine(i)"
                         (input)="onAmountChange(i, 'debit')" />
                     </td>
                     <td>
@@ -159,8 +162,8 @@ import { JOURNAL_ENTRY_TYPE_OPTIONS, JOURNAL_ENTRY_TYPE_SELECT_OPTIONS } from '.
             </div>
 
             <div class="grid-actions">
-              <button mat-stroked-button type="button" color="primary" (click)="addLine()">
-                <mat-icon>add</mat-icon> Add Line
+              <button mat-stroked-button type="button" color="primary" (click)="addLineAndFocus()">
+                <mat-icon>add</mat-icon> Add New Row (Alt + N)
               </button>
               <span class="spacer"></span>
               <div *ngIf="error" class="text-red" style="font-size:13px">{{ error }}</div>
@@ -178,9 +181,18 @@ import { JOURNAL_ENTRY_TYPE_OPTIONS, JOURNAL_ENTRY_TYPE_SELECT_OPTIONS } from '.
   `,
   styles: [`
     /* Shared page styling lives in global styles.scss */
+    .auto-calculated {
+      background: #eef2ff;
+      color: #1e3a8a;
+      font-weight: 700;
+      cursor: not-allowed;
+    }
   `]
 })
 export class GeneralVoucherComponent implements OnInit {
+  @ViewChildren(SearchableSelectComponent) private searchableSelects!: QueryList<SearchableSelectComponent>;
+  @ViewChildren('rowEntryTypeSelect') private rowEntryTypeSelects!: QueryList<SearchableSelectComponent>;
+
   private fb = inject(FormBuilder);
   private route = inject(ActivatedRoute);
   private masterData = inject(MasterDataService);
@@ -213,6 +225,7 @@ export class GeneralVoucherComponent implements OnInit {
     });
     this.applyAmountLock(0);
     this.applyAmountLock(1);
+    this.recalculateAutoBalance();
 
     const idParam = this.route.snapshot.paramMap.get('id');
     this.isEditMode = !!idParam;
@@ -302,6 +315,7 @@ export class GeneralVoucherComponent implements OnInit {
     this.linesArray.at(index).patchValue(patch);
     this.applyAmountLock(index);
     this.applyLineEntityValidation(this.linesArray.at(index) as FormGroup);
+    this.recalculateAutoBalance();
   }
 
   private onEntryTypeChangeForLine(line: FormGroup) {
@@ -314,6 +328,7 @@ export class GeneralVoucherComponent implements OnInit {
   onAmountChange(index: number, field: 'debit' | 'credit') {
     if ((field === 'debit' && this.isDebitLocked(index)) || (field === 'credit' && this.isCreditLocked(index))) {
       this.linesArray.at(index).patchValue({ [field]: 0 }, { emitEvent: false });
+      this.recalculateAutoBalance();
       return;
     }
 
@@ -323,17 +338,47 @@ export class GeneralVoucherComponent implements OnInit {
         [field === 'debit' ? 'credit' : 'debit']: 0
       });
     }
+
+    this.recalculateAutoBalance();
   }
 
-  addLine() {
-    this.linesArray.push(this.createLineGroup());
+  addLine(): void {
+    const entryType = this.isReceiptAutoBalanceActive()
+      ? EntryType.CustomerCredit
+      : EntryType.Expense;
+    this.linesArray.push(this.createLineGroup(entryType));
     const index = this.linesArray.length - 1;
     this.applyAmountLock(index);
     this.applyLineEntityValidation(this.linesArray.at(index) as FormGroup);
+    this.recalculateAutoBalance();
   }
 
-  removeLine(index: number) {
-    if (this.linesArray.length > 2) this.linesArray.removeAt(index);
+  addLineAndFocus(): void {
+    this.closeOpenDropdowns();
+    this.addLine();
+    setTimeout(() => this.rowEntryTypeSelects.last?.focus());
+  }
+
+  removeLine(index: number): void {
+    if (this.linesArray.length > 2) {
+      this.linesArray.removeAt(index);
+      this.recalculateAutoBalance();
+    }
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onShortcut(event: KeyboardEvent): void {
+    if (!this.loading
+      && !this.submitting
+      && event.altKey
+      && event.key.toLowerCase() === 'n') {
+      event.preventDefault();
+      this.addLineAndFocus();
+    }
+  }
+
+  private closeOpenDropdowns(): void {
+    this.searchableSelects.forEach(select => select.closeDropdown());
   }
 
   onSubmit() {
@@ -377,6 +422,9 @@ export class GeneralVoucherComponent implements OnInit {
           this.linesArray.clear();
           this.linesArray.push(this.createLineGroup(EntryType.CashDebit));
           this.linesArray.push(this.createLineGroup(EntryType.CustomerCredit));
+          this.applyAmountLock(0);
+          this.applyAmountLock(1);
+          this.recalculateAutoBalance();
         }
         this.submitting = false;
       },
@@ -421,6 +469,7 @@ export class GeneralVoucherComponent implements OnInit {
       this.applyAmountLock(this.linesArray.length - 1);
       this.applyLineEntityValidation(group);
     });
+    this.recalculateAutoBalance();
   }
 
   private createLineGroup(entryType: EntryType = EntryType.Expense): FormGroup {
@@ -435,6 +484,8 @@ export class GeneralVoucherComponent implements OnInit {
       credit: [0, [Validators.min(0)]]
     });
     group.get('entryType')?.valueChanges.subscribe(() => this.onEntryTypeChangeForLine(group));
+    group.get('debit')?.valueChanges.subscribe(() => this.recalculateAutoBalance());
+    group.get('credit')?.valueChanges.subscribe(() => this.recalculateAutoBalance());
     this.applyLineEntityValidation(group);
 
     return group;
@@ -472,6 +523,37 @@ export class GeneralVoucherComponent implements OnInit {
 
   isCreditLocked(index: number): boolean {
     return this.isDebitOnlyEntry(this.getEntryTypeVal(index) as EntryType);
+  }
+
+  isReceiptAutoBalanceActive(): boolean {
+    return !!this.form
+      && this.linesArray.length > 0
+      && this.getEntryTypeVal(0) === EntryType.CashDebit;
+  }
+
+  isAutoBalancingLine(index: number): boolean {
+    return index === 0 && this.isReceiptAutoBalanceActive();
+  }
+
+  recalculateAutoBalance(): void {
+    if (!this.isReceiptAutoBalanceActive()) {
+      return;
+    }
+
+    const laterTotals = this.linesArray.controls.slice(1).reduce(
+      (totals, line) => ({
+        debit: totals.debit + (+line.get('debit')?.value || 0),
+        credit: totals.credit + (+line.get('credit')?.value || 0)
+      }),
+      { debit: 0, credit: 0 }
+    );
+
+    const amount = Math.max(
+      0,
+      Math.round((laterTotals.credit - laterTotals.debit) * 100) / 100
+    );
+
+    this.linesArray.at(0).get('debit')?.setValue(amount, { emitEvent: false });
   }
 
   private isDebitOnlyEntry(entryType: EntryType): boolean {

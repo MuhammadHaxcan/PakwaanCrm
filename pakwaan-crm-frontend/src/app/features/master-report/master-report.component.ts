@@ -11,7 +11,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatTabsModule } from '@angular/material/tabs';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select/searchable-select.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { MasterDataService } from '../../core/services/master-data.service';
@@ -23,6 +22,59 @@ import { VOUCHER_TYPE_FILTER_OPTIONS } from '../../shared/constants/select-optio
 import { buildVoucherPrintRoute } from '../../core/utils/voucher-print.utils';
 import { buildMasterReportPrintUrl } from '../../core/utils/report-print.utils';
 
+export function buildFilteredAccountBalances(
+  entries: MasterReportEntry[],
+  balances: AccountBalance[],
+  searchTerm: string
+): AccountBalance[] {
+  const term = searchTerm.trim().toLowerCase();
+  if (!term) return balances;
+
+  const matchingEntries = entries.filter(entry =>
+    entry.voucherNo.toLowerCase().includes(term) ||
+    entry.accountName.toLowerCase().includes(term) ||
+    (entry.description ?? '').toLowerCase().includes(term) ||
+    (entry.itemName ?? '').toLowerCase().includes(term)
+  );
+
+  const withoutOpeningBalance = (
+    account: AccountBalance,
+    totalDebit: number,
+    totalCredit: number
+  ): AccountBalance => ({
+    ...account,
+    openingBalance: 0,
+    totalDebit,
+    totalCredit,
+    balance: account.accountType.toLowerCase() === 'vendor'
+      ? totalCredit - totalDebit
+      : totalDebit - totalCredit
+  });
+
+  return balances.flatMap(account => {
+    if (account.name.trim().toLowerCase().includes(term)) {
+      return [withoutOpeningBalance(account, account.totalDebit, account.totalCredit)];
+    }
+
+    const accountType = account.accountType.toLowerCase();
+    const accountEntries = matchingEntries.filter(entry => {
+      if (entry.accountName.trim().toLowerCase() !== account.name.trim().toLowerCase()) return false;
+
+      const category = entry.accountCategory.toLowerCase();
+      if (accountType === 'customer') return category.startsWith('customer');
+      if (accountType === 'vendor') return category.startsWith('vendor');
+      return !category.startsWith('customer') && !category.startsWith('vendor');
+    });
+
+    if (accountEntries.length === 0) return [];
+
+    const totalDebit = accountEntries.reduce((sum, entry) => sum + entry.debit, 0);
+    const totalCredit = accountEntries.reduce((sum, entry) => sum + entry.credit, 0);
+
+    return [withoutOpeningBalance(account, totalDebit, totalCredit)];
+  });
+}
+
 @Component({
   selector: 'app-master-report',
   standalone: true,
@@ -30,7 +82,7 @@ import { buildMasterReportPrintUrl } from '../../core/utils/report-print.utils';
     CommonModule, ReactiveFormsModule, FormsModule,
     MatCardModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatIconModule, MatTableModule, MatCheckboxModule,
-    MatTooltipModule, MatTabsModule, MatDatepickerModule,
+    MatTooltipModule, MatDatepickerModule,
     SearchableSelectComponent, LoadingSpinnerComponent
   ],
   template: `
@@ -98,12 +150,8 @@ import { buildMasterReportPrintUrl } from '../../core/utils/report-print.utils';
           <div *ngIf="generating" style="padding:24px 0"><app-loading-spinner></app-loading-spinner></div>
           <div *ngIf="error" class="text-red" style="margin:8px 0">{{ error }}</div>
 
-          <ng-container *ngIf="entries.length > 0 && !generating">
-            <mat-tab-group style="margin-top:8px">
-
-              <!-- Transactions tab -->
-              <mat-tab label="Transactions ({{ totalRecords }})">
-                <div class="transactions-stage">
+          <ng-container *ngIf="(entries.length > 0 || balances.length > 0 || loadingBalances) && !generating">
+            <div *ngIf="entries.length > 0" class="transactions-stage">
                   <div class="transactions-toolbar">
                     <div class="transactions-toolbar-copy">
                       <div class="transactions-toolbar-kicker">Transaction View</div>
@@ -210,51 +258,57 @@ import { buildMasterReportPrintUrl } from '../../core/utils/report-print.utils';
                       </tfoot>
                     </table>
                   </div>
-                </div>
+            </div>
 
-                <p class="text-muted" style="font-size:12px;margin-top:8px">
-                  Showing {{ filteredEntries.length }} of {{ totalRecords }} records
-                </p>
-              </mat-tab>
+            <p *ngIf="entries.length > 0" class="text-muted" style="font-size:12px;margin-top:8px">
+              Showing {{ filteredEntries.length }} of {{ totalRecords }} records
+            </p>
 
-              <!-- Account Balances tab -->
-              <mat-tab label="Account Balances">
-                <div style="margin-top:16px">
-                  <div *ngIf="loadingBalances" style="padding:16px 0"><app-loading-spinner></app-loading-spinner></div>
-                  <div class="line-grid" *ngIf="!loadingBalances && balances.length > 0">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Account</th>
-                          <th>Type</th>
-                          <th class="text-right">Opening</th>
-                          <th class="text-right">Total Debit</th>
-                          <th class="text-right">Total Credit</th>
-                          <th class="text-right">Balance</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr *ngFor="let b of balances" class="summary-row">
-                          <td class="font-bold">{{ b.name }}</td>
-                          <td>
-                            <span class="v-badge" [class.v-sales]="b.accountType==='Customer'">{{ b.accountType }}</span>
-                          </td>
-                          <td class="text-right">{{ b.openingBalance | number:'1.2-2' }}</td>
-                          <td class="text-right text-red">{{ b.totalDebit | number:'1.2-2' }}</td>
-                          <td class="text-right text-green">{{ b.totalCredit | number:'1.2-2' }}</td>
-                          <td class="text-right"
-                            [class.balance-positive]="b.balance >= 0"
-                            [class.balance-negative]="b.balance <  0">
-                            {{ b.balance | number:'1.2-2' }}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </mat-tab>
+            <section class="account-totals-stage">
+              <div class="account-totals-header">
+                <h3>Account Totals</h3>
+                <span *ngIf="!loadingBalances" class="account-count">{{ filteredBalances.length }} {{ filteredBalances.length === 1 ? 'account' : 'accounts' }}</span>
+              </div>
 
-            </mat-tab-group>
+              <div *ngIf="loadingBalances" class="account-totals-loading"><app-loading-spinner></app-loading-spinner></div>
+
+              <div class="line-grid" *ngIf="!loadingBalances && filteredBalances.length > 0">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Account</th>
+                      <th class="text-right">Total Debit</th>
+                      <th class="text-right">Total Credit</th>
+                      <th class="text-right">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let b of filteredBalances" class="summary-row">
+                      <td class="font-bold">{{ b.name }}</td>
+                      <td class="text-right text-red">{{ b.totalDebit | number:'1.2-2' }}</td>
+                      <td class="text-right text-green">{{ b.totalCredit | number:'1.2-2' }}</td>
+                      <td class="text-right"
+                        [class.balance-positive]="getPeriodBalance(b) >= 0"
+                        [class.balance-negative]="getPeriodBalance(b) < 0">
+                        {{ getPeriodBalance(b) | number:'1.2-2' }}
+                      </td>
+                    </tr>
+                  </tbody>
+                  <tfoot>
+                    <tr class="total-row">
+                      <td class="text-right">Totals</td>
+                      <td class="text-right">{{ accountTotalDebit | number:'1.2-2' }}</td>
+                      <td class="text-right">{{ accountTotalCredit | number:'1.2-2' }}</td>
+                      <td class="text-right"
+                        [class.balance-positive]="accountTotalBalance >= 0"
+                        [class.balance-negative]="accountTotalBalance < 0">
+                        {{ accountTotalBalance | number:'1.2-2' }}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </section>
           </ng-container>
 
         </mat-card-content>
@@ -309,6 +363,46 @@ import { buildMasterReportPrintUrl } from '../../core/utils/report-print.utils';
 
     .transactions-stage {
       margin-top: 16px;
+    }
+
+    .account-totals-stage {
+      margin-top: 22px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      background: #fff;
+    }
+
+    .account-totals-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      background: #1e293b;
+      color: #fff;
+    }
+
+    .account-totals-header h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .account-count {
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.16);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .account-totals-loading {
+      padding: 20px;
+    }
+
+    .account-totals-stage .line-grid {
+      border: 0;
+      border-radius: 0;
     }
 
     .transactions-toolbar {
@@ -525,6 +619,15 @@ export class MasterReportComponent implements OnInit {
   get visibleColCount() { return this.columnKeys.filter(k => this.visibleCols[k]).length; }
   get totalDebit()  { return this.filteredEntries.reduce((s, e) => s + e.debit,  0); }
   get totalCredit() { return this.filteredEntries.reduce((s, e) => s + e.credit, 0); }
+  get accountTotalDebit() { return this.filteredBalances.reduce((sum, account) => sum + account.totalDebit, 0); }
+  get accountTotalCredit() { return this.filteredBalances.reduce((sum, account) => sum + account.totalCredit, 0); }
+  get accountTotalBalance() { return this.filteredBalances.reduce((sum, account) => sum + this.getPeriodBalance(account), 0); }
+
+  getPeriodBalance(account: AccountBalance) {
+    return account.accountType === 'Vendor'
+      ? account.totalCredit - account.totalDebit
+      : account.totalDebit - account.totalCredit;
+  }
   get closingBalance() {
     return this.filteredEntries.length
       ? this.filteredEntries[this.filteredEntries.length - 1].runningBalance
@@ -532,7 +635,7 @@ export class MasterReportComponent implements OnInit {
   }
 
   get filteredEntries(): MasterReportEntry[] {
-    const q = this.searchTerm.toLowerCase();
+    const q = this.searchTerm.trim().toLowerCase();
     if (!q) return this.entries;
     return this.entries.filter(e =>
       e.voucherNo.toLowerCase().includes(q) ||
@@ -540,6 +643,10 @@ export class MasterReportComponent implements OnInit {
       (e.description ?? '').toLowerCase().includes(q) ||
       (e.itemName ?? '').toLowerCase().includes(q)
     );
+  }
+
+  get filteredBalances(): AccountBalance[] {
+    return buildFilteredAccountBalances(this.entries, this.balances, this.searchTerm);
   }
 
   ngOnInit() {
@@ -621,7 +728,8 @@ export class MasterReportComponent implements OnInit {
       endDate: formatDateForApi(this.filters.endDate),
       customerId: this.filters.customerId,
       vendorId: this.filters.vendorId,
-      voucherType: this.voucherTypeFilter
+      voucherType: this.voucherTypeFilter,
+      search: this.searchTerm
     });
     window.open(url, '_blank', 'noopener');
   }

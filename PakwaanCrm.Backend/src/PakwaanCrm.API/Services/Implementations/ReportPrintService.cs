@@ -45,6 +45,7 @@ public class ReportPrintService : IReportPrintService
         int? customerId,
         int? vendorId,
         int? voucherType,
+        string? search,
         CancellationToken ct = default)
     {
         var result = await _reportService.GetMasterReportAsync(
@@ -57,6 +58,11 @@ public class ReportPrintService : IReportPrintService
             100000,
             ct);
 
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            ApplyMasterReportSearch(result, search.Trim());
+        }
+
         var content = BuildMasterPdf(result, startDate, endDate);
         return Result<PrintableVoucherDocument>.Success(new PrintableVoucherDocument
         {
@@ -64,6 +70,36 @@ public class ReportPrintService : IReportPrintService
             ContentType = "application/pdf",
             Content = content
         });
+    }
+
+    private static void ApplyMasterReportSearch(MasterReportResponseDto result, string term)
+    {
+        result.Entries = result.Entries
+            .Where(entry =>
+                entry.VoucherNo.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || entry.AccountName.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || (entry.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (entry.ItemName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false))
+            .ToList();
+
+        decimal runningBalance = 0;
+        foreach (var entry in result.Entries)
+        {
+            var isVendorEntry = entry.AccountCategory.StartsWith("Vendor", StringComparison.OrdinalIgnoreCase);
+            runningBalance += isVendorEntry
+                ? entry.Credit - entry.Debit
+                : entry.Debit - entry.Credit;
+            entry.RunningBalance = runningBalance;
+        }
+
+        result.TotalRecords = result.Entries.Count;
+        result.TotalDebit = result.Entries.Sum(entry => entry.Debit);
+        result.TotalCredit = result.Entries.Sum(entry => entry.Credit);
+        result.HasMoreData = false;
+        result.HasOpeningBalance = false;
+        result.OpeningDebit = 0;
+        result.OpeningCredit = 0;
+        result.OpeningBalance = 0;
     }
 
     private byte[] BuildSoaPdf(SoaResponseDto soa, DateTime? startDate, DateTime? endDate)

@@ -18,6 +18,7 @@ public interface IReportPrintService
         int? customerId,
         int? vendorId,
         int? voucherType,
+        string? search,
         CancellationToken ct = default);
 }
 

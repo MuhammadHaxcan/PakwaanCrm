@@ -53,6 +53,10 @@ public class CustomerService : ICustomerService
     {
         var customer = await _repo.GetByIdAsync(id, ct);
         if (customer == null) return Result.Failure("Customer not found.");
+
+        if (await _repo.HasVoucherLinesAsync(id, ct))
+            return Result.Failure("This customer cannot be deleted because voucher entries are linked to it.");
+
         _repo.Delete(customer);
         await _repo.SaveChangesAsync(ct);
         return Result.Success();

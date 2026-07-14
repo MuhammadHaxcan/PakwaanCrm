@@ -86,11 +86,12 @@ public class ReportsController : ControllerBase
         [FromQuery] int? customerId,
         [FromQuery] int? vendorId,
         [FromQuery] int? voucherType,
+        [FromQuery] string? search,
         CancellationToken ct)
     {
         if (startDate.HasValue && endDate.HasValue && startDate.Value.Date > endDate.Value.Date)
             return BadRequest(new { error = "startDate cannot be after endDate." });
-        var result = await _printService.GenerateMasterReportPdfAsync(startDate, endDate, customerId, vendorId, voucherType, ct);
+        var result = await _printService.GenerateMasterReportPdfAsync(startDate, endDate, customerId, vendorId, voucherType, search, ct);
         if (!result.IsSuccess || result.Value is null)
             return BadRequest(new { error = result.Error });
 

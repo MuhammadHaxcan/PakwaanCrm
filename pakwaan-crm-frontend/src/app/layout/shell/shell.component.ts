@@ -4,11 +4,9 @@ import { Component, OnInit, ViewChild, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSidenav, MatSidenavModule } from '@angular/material/sidenav';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
-import { ToastService } from '../../core/services/toast.service';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 
 @Component({
@@ -18,7 +16,6 @@ import { SidebarComponent } from '../sidebar/sidebar.component';
     CommonModule,
     RouterOutlet,
     MatSidenavModule,
-    MatSnackBarModule,
     MatToolbarModule,
     MatButtonModule,
     MatIconModule,
@@ -73,14 +70,12 @@ import { SidebarComponent } from '../sidebar/sidebar.component';
 export class ShellComponent implements OnInit {
   @ViewChild('drawer') private drawer?: MatSidenav;
 
-  private toast = inject(ToastService);
-  private snack = inject(MatSnackBar);
   private breakpointObserver = inject(BreakpointObserver);
   private router = inject(Router);
 
   isMobile = false;
 
-  ngOnInit() {
+  ngOnInit(): void {
     this.breakpointObserver.observe('(max-width: 900px)').subscribe(result => {
       this.isMobile = result.matches;
       if (!this.isMobile) {
@@ -95,14 +90,5 @@ export class ShellComponent implements OnInit {
           this.drawer?.close();
         }
       });
-
-    this.toast.toasts$.subscribe(t => {
-      this.snack.open(t.message, '×', {
-        duration: 4000,
-        panelClass: t.type === 'error' ? 'snack-error' : t.type === 'success' ? 'snack-success' : '',
-        horizontalPosition: this.isMobile ? 'center' : 'right',
-        verticalPosition: 'top'
-      });
-    });
   }
 }

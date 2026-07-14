@@ -50,6 +50,10 @@ public class ItemService : IItemService
     {
         var item = await _repo.GetByIdAsync(id, ct);
         if (item == null) return Result.Failure("Item not found.");
+
+        if (await _repo.HasVoucherLinesAsync(id, ct))
+            return Result.Failure("This item cannot be deleted because voucher entries are linked to it.");
+
         _repo.Delete(item);
         await _repo.SaveChangesAsync(ct);
         return Result.Success();

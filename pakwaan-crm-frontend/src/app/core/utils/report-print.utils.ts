@@ -11,6 +11,7 @@ export interface MasterPrintQuery {
   customerId?: number | null;
   vendorId?: number | null;
   voucherType?: number | null;
+  search?: string;
 }
 
 export function buildSoaPrintUrl(query: SoaPrintQuery): string {
@@ -29,6 +30,7 @@ export function buildMasterReportPrintUrl(query: MasterPrintQuery): string {
   if (query.customerId) params.set('customerId', String(query.customerId));
   if (query.vendorId) params.set('vendorId', String(query.vendorId));
   if (query.voucherType !== null && query.voucherType !== undefined) params.set('voucherType', String(query.voucherType));
+  if (query.search?.trim()) params.set('search', query.search.trim());
   return `/print-master-report?${params.toString()}`;
 }
 

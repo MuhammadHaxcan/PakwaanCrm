@@ -50,6 +50,10 @@ public class VendorService : IVendorService
     {
         var vendor = await _repo.GetByIdAsync(id, ct);
         if (vendor == null) return Result.Failure("Vendor not found.");
+
+        if (await _repo.HasVoucherLinesAsync(id, ct))
+            return Result.Failure("This vendor cannot be deleted because voucher entries are linked to it.");
+
         _repo.Delete(vendor);
         await _repo.SaveChangesAsync(ct);
         return Result.Success();

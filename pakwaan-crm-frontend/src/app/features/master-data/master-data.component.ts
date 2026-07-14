@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -371,7 +372,10 @@ export class MasterDataComponent implements OnInit {
     this.dialog.open(ConfirmDialogComponent, { data: { title: 'Delete Customer', message: `Delete "${c.name}"?` } })
       .afterClosed().subscribe(ok => {
         if (!ok) return;
-        this.api.delete(`/customers/${c.id}`).subscribe({ next: () => { this.toast.success('Deleted'); this.loadCustomers(); this.masterData.reload(); }, error: (e: Error) => this.toast.error(e.message) });
+        this.api.delete(`/customers/${c.id}`).subscribe({
+          next: () => { this.toast.success('Deleted'); this.loadCustomers(); this.masterData.reload(); },
+          error: (error: HttpErrorResponse) => this.showDeleteError(error, 'customer')
+        });
       });
   }
 
@@ -387,7 +391,10 @@ export class MasterDataComponent implements OnInit {
     this.dialog.open(ConfirmDialogComponent, { data: { title: 'Delete Vendor', message: `Delete "${v.name}"?` } })
       .afterClosed().subscribe(ok => {
         if (!ok) return;
-        this.api.delete(`/vendors/${v.id}`).subscribe({ next: () => { this.toast.success('Deleted'); this.loadVendors(); this.masterData.reload(); }, error: (e: Error) => this.toast.error(e.message) });
+        this.api.delete(`/vendors/${v.id}`).subscribe({
+          next: () => { this.toast.success('Deleted'); this.loadVendors(); this.masterData.reload(); },
+          error: (error: HttpErrorResponse) => this.showDeleteError(error, 'vendor')
+        });
       });
   }
 
@@ -403,7 +410,10 @@ export class MasterDataComponent implements OnInit {
     this.dialog.open(ConfirmDialogComponent, { data: { title: 'Delete Item', message: `Delete "${i.name}"?` } })
       .afterClosed().subscribe(ok => {
         if (!ok) return;
-        this.api.delete(`/items/${i.id}`).subscribe({ next: () => { this.toast.success('Deleted'); this.loadItems(); this.masterData.reload(); }, error: (e: Error) => this.toast.error(e.message) });
+        this.api.delete(`/items/${i.id}`).subscribe({
+          next: () => { this.toast.success('Deleted'); this.loadItems(); this.masterData.reload(); },
+          error: (error: HttpErrorResponse) => this.showDeleteError(error, 'item')
+        });
       });
   }
 
@@ -419,7 +429,17 @@ export class MasterDataComponent implements OnInit {
     this.dialog.open(ConfirmDialogComponent, { data: { title: 'Delete Account', message: `Delete "${a.name}"?` } })
       .afterClosed().subscribe(ok => {
         if (!ok) return;
-        this.api.delete(`/accounts/${a.id}`).subscribe({ next: () => { this.toast.success('Deleted'); this.loadAccounts(); this.masterData.reload(); }, error: (e: Error) => this.toast.error(e.message) });
+        this.api.delete(`/accounts/${a.id}`).subscribe({
+          next: () => { this.toast.success('Deleted'); this.loadAccounts(); this.masterData.reload(); },
+          error: (error: HttpErrorResponse) => this.showDeleteError(error, 'account')
+        });
       });
+  }
+
+  private showDeleteError(error: HttpErrorResponse, entityName: string) {
+    const message = typeof error.error?.error === 'string'
+      ? error.error.error
+      : `Unable to delete this ${entityName}.`;
+    this.toast.error(message);
   }
 }

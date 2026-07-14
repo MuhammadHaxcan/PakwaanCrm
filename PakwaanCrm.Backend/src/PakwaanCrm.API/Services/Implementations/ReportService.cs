@@ -74,7 +74,9 @@ public class ReportService : IReportService
 
         var rawEntries = await periodQuery
             .OrderBy(l => l.Voucher.Date)
-            .ThenBy(l => l.Voucher.VoucherNo)
+            .ThenBy(l => l.Voucher.CreatedAt)
+            .ThenBy(l => l.Voucher.Id)
+            .ThenBy(l => l.Id)
             .Select(l => new
             {
                 l.Voucher.Date,
@@ -179,7 +181,8 @@ public class ReportService : IReportService
         }
         var orderedQuery = query
             .OrderBy(l => l.Voucher.Date)
-            .ThenBy(l => l.Voucher.VoucherNo)
+            .ThenBy(l => l.Voucher.CreatedAt)
+            .ThenBy(l => l.Voucher.Id)
             .ThenBy(l => l.Id);
 
         var totalRecords = await query.CountAsync(ct);

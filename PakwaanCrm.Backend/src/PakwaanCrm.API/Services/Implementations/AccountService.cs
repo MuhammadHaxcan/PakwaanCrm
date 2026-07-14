@@ -60,6 +60,10 @@ public class AccountService : IAccountService
     {
         var account = await _repo.GetByIdAsync(id, ct);
         if (account == null) return Result.Failure("Account not found.");
+
+        if (await _repo.HasVoucherLinesAsync(id, ct))
+            return Result.Failure("This account cannot be deleted because voucher entries are linked to it.");
+
         _repo.Delete(account);
         await _repo.SaveChangesAsync(ct);
         return Result.Success();
