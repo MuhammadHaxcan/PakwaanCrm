@@ -12,6 +12,7 @@ using PakwaanCrm.API.Data;
 using PakwaanCrm.API.Entities;
 using PakwaanCrm.API.Mappings;
 using PakwaanCrm.API.Middleware;
+using PakwaanCrm.API.RateLimiting;
 using PakwaanCrm.API.Repositories.Implementations;
 using PakwaanCrm.API.Repositories.Interfaces;
 using PakwaanCrm.API.Services.Implementations;
@@ -137,6 +138,19 @@ builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var metadata)
+            ? metadata
+            : (TimeSpan?)null;
+        var retryAfterSeconds = AuthRateLimitResponse.GetRetryAfterSeconds(retryAfter);
+
+        context.HttpContext.Response.Headers["Retry-After"] = retryAfterSeconds.ToString();
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new { error = $"Too many requests. Please retry after {retryAfterSeconds} seconds." },
+            cancellationToken);
+    };
     options.AddPolicy("AuthPolicy", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",

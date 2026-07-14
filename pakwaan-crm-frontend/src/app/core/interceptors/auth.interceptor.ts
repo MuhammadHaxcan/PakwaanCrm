@@ -7,17 +7,22 @@ import { AuthService } from '../services/auth.service';
 const ALREADY_RETRIED = new HttpContextToken<boolean>(() => false);
 let refreshInFlight$: Observable<AuthResponse> | null = null;
 
-function isAuthEndpoint(url: string): boolean {
-  return url.includes('/api/auth/login') || url.includes('/api/auth/refresh') || url.includes('/api/auth/logout');
+function shouldOmitAccessToken(url: string): boolean {
+  return url.includes('/api/auth/login') || url.includes('/api/auth/refresh');
+}
+
+function shouldSkipAutomaticRefresh(url: string): boolean {
+  return shouldOmitAccessToken(url) || url.includes('/api/auth/logout');
 }
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const token = auth.getAccessToken();
-  const shouldSkipToken = isAuthEndpoint(req.url);
+  const omitAccessToken = shouldOmitAccessToken(req.url);
+  const skipAutomaticRefresh = shouldSkipAutomaticRefresh(req.url);
 
   let request = req;
-  if (token && !shouldSkipToken) {
+  if (token && !omitAccessToken) {
     request = req.clone({
       setHeaders: {
         Authorization: `Bearer ${token}`
@@ -27,7 +32,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(request).pipe(
     catchError(err => {
-      if (shouldSkipToken || err.status !== 401) {
+      if (skipAutomaticRefresh || err.status !== 401) {
         return throwError(() => err);
       }
 

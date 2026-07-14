@@ -192,6 +192,15 @@ export class LoginComponent {
 
   private getLoginErrorMessage(error: unknown): string {
     if (error instanceof HttpErrorResponse) {
+      if (error.status === 429) {
+        const retryAfter = Number(error.headers.get('Retry-After'));
+        const retryAfterSeconds = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.ceil(retryAfter)
+          : 60;
+
+        return `Too many sign-in attempts. Please try again after ${retryAfterSeconds} seconds.`;
+      }
+
       const responseBody = error.error;
 
       if (typeof responseBody === 'string' && responseBody.trim()) {
