@@ -3,13 +3,24 @@ export function todayDate(): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
+export function createStrictLocalDate(year: number, month: number, day: number): Date | null {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year
+    && date.getMonth() === month - 1
+    && date.getDate() === day
+    ? date
+    : null;
+}
+
 export function parseApiDate(value: string | null | undefined): Date | null {
   if (!value) return null;
 
   const apiMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
   if (apiMatch) {
     const [, yyyy, mm, dd] = apiMatch;
-    return new Date(+yyyy, +mm - 1, +dd);
+    return createStrictLocalDate(+yyyy, +mm, +dd);
   }
 
   const parsed = new Date(value);
@@ -50,13 +61,13 @@ function parseLooseDate(value: string): Date | null {
   const uiMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
   if (uiMatch) {
     const [, dd, mm, yyyy] = uiMatch;
-    return new Date(+yyyy, +mm - 1, +dd);
+    return createStrictLocalDate(+yyyy, +mm, +dd);
   }
 
   const apiMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (apiMatch) {
     const [, yyyy, mm, dd] = apiMatch;
-    return new Date(+yyyy, +mm - 1, +dd);
+    return createStrictLocalDate(+yyyy, +mm, +dd);
   }
 
   const parsed = new Date(value);

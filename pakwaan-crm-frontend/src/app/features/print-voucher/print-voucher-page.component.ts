@@ -1,18 +1,21 @@
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { Component, DestroyRef, ElementRef, OnInit, ViewChild, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { ActivatedRoute } from '@angular/router';
-import { Subscription, switchMap } from 'rxjs';
+import { switchMap } from 'rxjs';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { VoucherPrintKind, buildVoucherPrintApiPath } from '../../core/utils/voucher-print.utils';
-import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { SafeResourceUrl } from '@angular/platform-browser';
+import { PdfObjectUrlService } from '../../shared/services/pdf-object-url.service';
 
 @Component({
   selector: 'app-print-voucher-page',
   standalone: true,
   imports: [CommonModule, MatButtonModule, MatIconModule, LoadingSpinnerComponent],
+  providers: [PdfObjectUrlService],
   template: `
     <div class="print-voucher-page">
       <div class="topbar">
@@ -36,6 +39,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
       <div *ngIf="error && !loading" class="state error">{{ error }}</div>
 
       <iframe
+        #pdfFrame
         *ngIf="pdfUrl && !loading"
         [src]="pdfUrl"
         title="Voucher PDF"
@@ -60,13 +64,15 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
     }
   `]
 })
-export class PrintVoucherPageComponent implements OnInit, OnDestroy {
+export class PrintVoucherPageComponent implements OnInit {
+  @ViewChild('pdfFrame') private pdfFrame?: ElementRef<HTMLIFrameElement>;
+
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
-  private readonly sanitizer = inject(DomSanitizer);
+  private readonly document = inject(DOCUMENT);
+  private readonly pdfObjectUrl = inject(PdfObjectUrlService);
+  private readonly destroyRef = inject(DestroyRef);
 
-  private routeSub?: Subscription;
-  private objectUrl: string | null = null;
   private kind: VoucherPrintKind = 'journal';
 
   loading = true;
@@ -76,8 +82,9 @@ export class PrintVoucherPageComponent implements OnInit, OnDestroy {
   pdfUrl: SafeResourceUrl | null = null;
 
   ngOnInit(): void {
-    this.routeSub = this.route.paramMap
+    this.route.paramMap
       .pipe(
+        takeUntilDestroyed(this.destroyRef),
         switchMap(paramMap => {
           this.loading = true;
           this.error = '';
@@ -87,15 +94,14 @@ export class PrintVoucherPageComponent implements OnInit, OnDestroy {
           this.kind = routePath.includes('sale') ? 'sale' : routePath.includes('purchase') ? 'purchase' : 'journal';
           this.voucherNo = (paramMap.get('voucherNo') ?? '').trim();
           this.pdfFileName = this.buildPdfFileName(this.voucherNo);
-          document.title = this.pdfFileName;
+          this.document.title = this.pdfFileName;
           const apiPath = buildVoucherPrintApiPath(this.kind, this.voucherNo);
           return this.http.get(apiPath, { responseType: 'blob' });
         })
       )
       .subscribe({
         next: blob => {
-          this.objectUrl = URL.createObjectURL(this.toNamedPdfFile(blob));
-          this.pdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.objectUrl);
+          this.pdfUrl = this.pdfObjectUrl.replace(this.toNamedPdfFile(blob));
           this.loading = false;
         },
         error: err => {
@@ -109,12 +115,11 @@ export class PrintVoucherPageComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.error = '';
     this.clearUrl();
-    document.title = this.pdfFileName || 'Voucher Print';
+    this.document.title = this.pdfFileName || 'Voucher Print';
     const apiPath = buildVoucherPrintApiPath(this.kind, this.voucherNo);
     this.http.get(apiPath, { responseType: 'blob' }).subscribe({
       next: blob => {
-        this.objectUrl = URL.createObjectURL(this.toNamedPdfFile(blob));
-        this.pdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.objectUrl);
+        this.pdfUrl = this.pdfObjectUrl.replace(this.toNamedPdfFile(blob));
         this.loading = false;
       },
       error: err => {
@@ -125,26 +130,15 @@ export class PrintVoucherPageComponent implements OnInit, OnDestroy {
   }
 
   printDocument(): void {
-    const frame = document.querySelector('.pdf-frame') as HTMLIFrameElement | null;
-    frame?.contentWindow?.print();
+    this.pdfFrame?.nativeElement.contentWindow?.print();
   }
 
   openInSystemViewer(): void {
-    if (this.objectUrl) {
-      window.open(this.objectUrl, '_blank', 'noopener');
-    }
-  }
-
-  ngOnDestroy(): void {
-    this.routeSub?.unsubscribe();
-    this.clearUrl();
+    this.pdfObjectUrl.open();
   }
 
   private clearUrl(): void {
-    if (this.objectUrl) {
-      URL.revokeObjectURL(this.objectUrl);
-      this.objectUrl = null;
-    }
+    this.pdfObjectUrl.clear();
     this.pdfUrl = null;
   }
 

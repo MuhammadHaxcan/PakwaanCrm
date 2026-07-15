@@ -1,6 +1,7 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, ViewChild, inject } from '@angular/core';
+import { Component, DestroyRef, OnInit, ViewChild, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSidenav, MatSidenavModule } from '@angular/material/sidenav';
@@ -72,19 +73,25 @@ export class ShellComponent implements OnInit {
 
   private breakpointObserver = inject(BreakpointObserver);
   private router = inject(Router);
+  private destroyRef = inject(DestroyRef);
 
   isMobile = false;
 
   ngOnInit(): void {
-    this.breakpointObserver.observe('(max-width: 900px)').subscribe(result => {
+    this.breakpointObserver.observe('(max-width: 900px)')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(result => {
       this.isMobile = result.matches;
       if (!this.isMobile) {
         this.drawer?.open();
       }
-    });
+      });
 
     this.router.events
-      .pipe(filter(event => event instanceof NavigationEnd))
+      .pipe(
+        filter(event => event instanceof NavigationEnd),
+        takeUntilDestroyed(this.destroyRef)
+      )
       .subscribe(() => {
         if (this.isMobile) {
           this.drawer?.close();

@@ -2,7 +2,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { MatNativeDateModule } from '@angular/material/core';
 import { ActivatedRoute } from '@angular/router';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 import { EntryType } from '../../core/models/enums';
 import { ApiService } from '../../core/services/api.service';
 import { MasterDataService } from '../../core/services/master-data.service';
@@ -13,6 +13,7 @@ import { GeneralVoucherComponent } from './journal-voucher.component';
 describe('GeneralVoucherComponent', () => {
   let fixture: ComponentFixture<GeneralVoucherComponent>;
   let component: GeneralVoucherComponent;
+  let api: jasmine.SpyObj<ApiService>;
 
   beforeEach(async () => {
     const masterData = jasmine.createSpyObj<MasterDataService>(
@@ -23,12 +24,14 @@ describe('GeneralVoucherComponent', () => {
     masterData.loadVendors.and.returnValue(of([]));
     masterData.loadAccounts.and.returnValue(of([]));
 
+    api = jasmine.createSpyObj<ApiService>('ApiService', ['get', 'post', 'put']);
+
     await TestBed.configureTestingModule({
       imports: [GeneralVoucherComponent, NoopAnimationsModule, MatNativeDateModule],
       providers: [
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => null } } } },
         { provide: MasterDataService, useValue: masterData },
-        { provide: ApiService, useValue: jasmine.createSpyObj<ApiService>('ApiService', ['get', 'post', 'put']) },
+        { provide: ApiService, useValue: api },
         { provide: ToastService, useValue: jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error', 'info']) }
       ]
     }).compileComponents();
@@ -125,5 +128,16 @@ describe('GeneralVoucherComponent', () => {
 
     expect(component.linesArray.length).toBe(2);
     expect(event.defaultPrevented).toBeFalse();
+  });
+
+  it('submits only once while a journal request is pending', () => {
+    spyOnProperty(component.form, 'invalid', 'get').and.returnValue(false);
+    spyOnProperty(component, 'balance', 'get').and.returnValue(0);
+    api.post.and.returnValue(NEVER);
+
+    component.onSubmit();
+    component.onSubmit();
+
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 });

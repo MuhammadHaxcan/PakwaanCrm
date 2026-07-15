@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
+import { Component, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { ReactiveFormsModule, FormArray, FormBuilder, FormGroup, Validators } from '@angular/forms';
@@ -18,6 +18,7 @@ import { CreateVendorPurchaseRequest, VoucherDetail } from '../../core/models/mo
 import { EntryType, QuantityType, VoucherType } from '../../core/models/enums';
 import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
 import { QUANTITY_TYPE_OPTIONS } from '../../shared/constants/select-options';
+import { AddLineShortcutDirective } from '../../shared/directives/add-line-shortcut.directive';
 
 @Component({
   selector: 'app-vendor-purchase',
@@ -32,10 +33,11 @@ import { QUANTITY_TYPE_OPTIONS } from '../../shared/constants/select-options';
     MatButtonModule,
     MatIconModule,
     MatTooltipModule,
-    SearchableSelectComponent
+    SearchableSelectComponent,
+    AddLineShortcutDirective
   ],
   template: `
-    <div class="page-container">
+    <div class="page-container" appAddLineShortcut (appAddLineShortcut)="addLineAndFocus()">
       <div class="page-header">
         <div class="ph-icon"><mat-icon>inventory_2</mat-icon></div>
         <div class="ph-text">
@@ -267,14 +269,6 @@ export class VendorPurchaseComponent implements OnInit {
     if (this.linesArray.length > 1) this.linesArray.removeAt(index);
   }
 
-  @HostListener('document:keydown', ['$event'])
-  onShortcut(event: KeyboardEvent) {
-    if (event.altKey && event.key.toLowerCase() === 'n') {
-      event.preventDefault();
-      this.addLineAndFocus();
-    }
-  }
-
   private closeOpenDropdowns() {
     this.searchableSelects.forEach(select => select.closeDropdown());
   }
@@ -314,7 +308,7 @@ export class VendorPurchaseComponent implements OnInit {
   }
 
   onSubmit() {
-    if (this.form.invalid) return;
+    if (this.form.invalid || this.submitting) return;
 
     this.submitting = true;
     this.error = '';
@@ -324,7 +318,13 @@ export class VendorPurchaseComponent implements OnInit {
       date: formatDateForApi(value.date),
       vendorId: +value.vendorId,
       notes: value.notes || null,
-      lines: value.lines.map((line: any) => ({
+      lines: value.lines.map((line: {
+        itemId: number | string | null;
+        quantityType: number | string;
+        quantity: number | string;
+        rate: number | string;
+        description?: string;
+      }) => ({
         itemId: line.itemId ? +line.itemId : null,
         quantityType: +line.quantityType,
         quantity: +line.quantity,
@@ -334,8 +334,8 @@ export class VendorPurchaseComponent implements OnInit {
     };
 
     const request$ = this.isEditMode && this.voucherId
-      ? this.api.put<any>(`/vouchers/${this.voucherId}/vendor-purchases`, request)
-      : this.api.post<any>('/vouchers/vendor-purchases', request);
+      ? this.api.put<VoucherDetail>(`/vouchers/${this.voucherId}/vendor-purchases`, request)
+      : this.api.post<VoucherDetail>('/vouchers/vendor-purchases', request);
 
     request$.subscribe({
       next: res => {

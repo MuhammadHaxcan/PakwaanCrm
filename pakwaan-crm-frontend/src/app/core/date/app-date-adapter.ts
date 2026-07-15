@@ -1,11 +1,13 @@
 import { Injectable } from '@angular/core';
 import { NativeDateAdapter } from '@angular/material/core';
+import { createStrictLocalDate } from './date-utils';
 
 @Injectable()
 export class AppDateAdapter extends NativeDateAdapter {
   override parse(value: unknown): Date | null {
     const parsed = this.parseAppDate(value);
     if (parsed) return parsed;
+    if (this.isSupportedDateString(value)) return null;
 
     const fallback = super.parse(value);
     return fallback && !Number.isNaN(fallback.getTime()) ? fallback : null;
@@ -14,6 +16,7 @@ export class AppDateAdapter extends NativeDateAdapter {
   override deserialize(value: unknown): Date | null {
     const parsed = this.parseAppDate(value);
     if (parsed) return parsed;
+    if (this.isSupportedDateString(value)) return null;
 
     const fallback = super.deserialize(value);
     return fallback && this.isValid(fallback) ? fallback : null;
@@ -34,17 +37,24 @@ export class AppDateAdapter extends NativeDateAdapter {
       const uiMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
       if (uiMatch) {
         const [, dd, mm, yyyy] = uiMatch;
-        return new Date(+yyyy, +mm - 1, +dd);
+        return createStrictLocalDate(+yyyy, +mm, +dd);
       }
 
       const apiMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
       if (apiMatch) {
         const [, yyyy, mm, dd] = apiMatch;
-        return new Date(+yyyy, +mm - 1, +dd);
+        return createStrictLocalDate(+yyyy, +mm, +dd);
       }
     }
 
     return value instanceof Date && !Number.isNaN(value.getTime()) ? value : null;
+  }
+
+  private isSupportedDateString(value: unknown): boolean {
+    if (typeof value !== 'string') return false;
+    const trimmed = value.trim();
+    return /^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)
+      || /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
   }
 }
 

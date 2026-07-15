@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
+import { Component, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { ReactiveFormsModule, FormArray, FormBuilder, FormGroup, Validators } from '@angular/forms';
@@ -18,6 +18,7 @@ import { EntryType, VoucherType } from '../../core/models/enums';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select/searchable-select.component';
 import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
 import { JOURNAL_ENTRY_TYPE_OPTIONS, JOURNAL_ENTRY_TYPE_SELECT_OPTIONS } from '../../shared/constants/select-options';
+import { AddLineShortcutDirective } from '../../shared/directives/add-line-shortcut.directive';
 
 @Component({
   selector: 'app-general-voucher',
@@ -32,10 +33,14 @@ import { JOURNAL_ENTRY_TYPE_OPTIONS, JOURNAL_ENTRY_TYPE_SELECT_OPTIONS } from '.
     MatIconModule,
     MatInputModule,
     MatTooltipModule,
-    SearchableSelectComponent
+    SearchableSelectComponent,
+    AddLineShortcutDirective
   ],
   template: `
-    <div class="page-container">
+    <div class="page-container"
+      appAddLineShortcut
+      [appAddLineShortcutGuard]="canAddLineFromShortcut"
+      (appAddLineShortcut)="addLineAndFocus()">
       <div class="page-header">
         <div class="ph-icon"><mat-icon>menu_book</mat-icon></div>
         <div class="ph-text">
@@ -190,6 +195,7 @@ import { JOURNAL_ENTRY_TYPE_OPTIONS, JOURNAL_ENTRY_TYPE_SELECT_OPTIONS } from '.
   `]
 })
 export class GeneralVoucherComponent implements OnInit {
+  readonly canAddLineFromShortcut = (): boolean => !this.loading && !this.submitting;
   @ViewChildren(SearchableSelectComponent) private searchableSelects!: QueryList<SearchableSelectComponent>;
   @ViewChildren('rowEntryTypeSelect') private rowEntryTypeSelects!: QueryList<SearchableSelectComponent>;
 
@@ -366,23 +372,12 @@ export class GeneralVoucherComponent implements OnInit {
     }
   }
 
-  @HostListener('document:keydown', ['$event'])
-  onShortcut(event: KeyboardEvent): void {
-    if (!this.loading
-      && !this.submitting
-      && event.altKey
-      && event.key.toLowerCase() === 'n') {
-      event.preventDefault();
-      this.addLineAndFocus();
-    }
-  }
-
   private closeOpenDropdowns(): void {
     this.searchableSelects.forEach(select => select.closeDropdown());
   }
 
   onSubmit() {
-    if (this.form.invalid || this.balance !== 0) return;
+    if (this.form.invalid || this.balance !== 0 || this.submitting) return;
 
     this.submitting = true;
     this.error = '';
@@ -391,7 +386,16 @@ export class GeneralVoucherComponent implements OnInit {
     const request: CreateJournalVoucherRequest = {
       date: formatDateForApi(value.date),
       notes: value.notes || null,
-      lines: value.lines.map((line: any) => ({
+      lines: value.lines.map((line: {
+        entryType: number | string;
+        customerId: number | string | null;
+        vendorId: number | string | null;
+        accountId: number | string | null;
+        freeText?: string;
+        description?: string;
+        debit: number | string;
+        credit: number | string;
+      }) => ({
         entryType: +line.entryType,
         customerId: line.customerId ? +line.customerId : null,
         vendorId: line.vendorId ? +line.vendorId : null,

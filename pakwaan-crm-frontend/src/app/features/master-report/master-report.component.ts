@@ -10,6 +10,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select/searchable-select.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
@@ -21,6 +22,7 @@ import { forkJoin } from 'rxjs';
 import { VOUCHER_TYPE_FILTER_OPTIONS } from '../../shared/constants/select-options';
 import { buildVoucherPrintRoute } from '../../core/utils/voucher-print.utils';
 import { buildMasterReportPrintUrl } from '../../core/utils/report-print.utils';
+import { downloadCsv } from '../../shared/utils/csv';
 
 export function buildFilteredAccountBalances(
   entries: MasterReportEntry[],
@@ -82,7 +84,7 @@ export function buildFilteredAccountBalances(
     CommonModule, ReactiveFormsModule, FormsModule,
     MatCardModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatIconModule, MatTableModule, MatCheckboxModule,
-    MatTooltipModule, MatDatepickerModule,
+    MatMenuModule, MatTooltipModule, MatDatepickerModule,
     SearchableSelectComponent, LoadingSpinnerComponent
   ],
   template: `
@@ -180,12 +182,22 @@ export function buildFilteredAccountBalances(
                   </div>
 
                   <div class="column-toolbar">
-                    <span class="column-toolbar-label">Columns</span>
-                    <mat-checkbox *ngFor="let col of columnKeys" [(ngModel)]="visibleCols[col]"
-                      [ngModelOptions]="{standalone:true}" class="column-toggle">
-                      {{ colLabels[col] }}
-                    </mat-checkbox>
+                    <button mat-stroked-button type="button" class="column-menu-trigger"
+                      [matMenuTriggerFor]="columnMenu" data-testid="columns-menu-trigger">
+                      <span>Columns</span>
+                      <mat-icon>arrow_drop_down</mat-icon>
+                    </button>
                   </div>
+
+                  <mat-menu #columnMenu="matMenu" class="column-menu-panel">
+                    <div class="column-menu-content" (click)="$event.stopPropagation()">
+                      <mat-checkbox *ngFor="let col of columnKeys"
+                        [(ngModel)]="visibleCols[col]" [ngModelOptions]="{standalone:true}"
+                        class="column-toggle" data-testid="column-option">
+                        {{ colLabels[col] }}
+                      </mat-checkbox>
+                    </div>
+                  </mat-menu>
 
                   <div class="line-grid">
                     <table>
@@ -265,11 +277,6 @@ export function buildFilteredAccountBalances(
             </p>
 
             <section class="account-totals-stage">
-              <div class="account-totals-header">
-                <h3>Account Totals</h3>
-                <span *ngIf="!loadingBalances" class="account-count">{{ filteredBalances.length }} {{ filteredBalances.length === 1 ? 'account' : 'accounts' }}</span>
-              </div>
-
               <div *ngIf="loadingBalances" class="account-totals-loading"><app-loading-spinner></app-loading-spinner></div>
 
               <div class="line-grid" *ngIf="!loadingBalances && filteredBalances.length > 0">
@@ -367,42 +374,10 @@ export function buildFilteredAccountBalances(
 
     .account-totals-stage {
       margin-top: 22px;
-      overflow: hidden;
-      border: 1px solid #e2e8f0;
-      border-radius: 16px;
-      background: #fff;
-    }
-
-    .account-totals-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 14px 18px;
-      background: #1e293b;
-      color: #fff;
-    }
-
-    .account-totals-header h3 {
-      margin: 0;
-      font-size: 15px;
-      font-weight: 700;
-    }
-
-    .account-count {
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.16);
-      font-size: 11px;
-      font-weight: 600;
     }
 
     .account-totals-loading {
       padding: 20px;
-    }
-
-    .account-totals-stage .line-grid {
-      border: 0;
-      border-radius: 0;
     }
 
     .transactions-toolbar {
@@ -477,26 +452,30 @@ export function buildFilteredAccountBalances(
 
     .column-toolbar {
       display: flex;
-      align-items: center;
-      gap: 10px 14px;
-      flex-wrap: wrap;
-      padding: 12px 16px;
+      justify-content: flex-end;
       margin-bottom: 16px;
-      border: 1px solid #e2e8f0;
-      border-radius: 16px;
-      background: #f8fafc;
     }
 
-    .column-toolbar-label {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #475569;
+    .column-menu-trigger {
+      height: 42px;
+      padding: 0 14px;
+      border-radius: 12px;
+    }
+
+    .column-menu-trigger mat-icon {
+      margin: 0 -4px 0 4px;
+    }
+
+    .column-menu-content {
+      display: flex;
+      min-width: 210px;
+      padding: 8px 14px;
+      flex-direction: column;
+      gap: 2px;
     }
 
     .column-toggle {
-      font-size: 13px;
+      min-height: 36px;
     }
 
     :host ::ng-deep .filter-panel .mat-mdc-form-field-subscript-wrapper,
@@ -658,6 +637,7 @@ export class MasterReportComponent implements OnInit {
   }
 
   generate() {
+    if (this.generating) return;
     this.filters.startDate = parseDateInput(this.filters.startDate);
     this.filters.endDate = parseDateInput(this.filters.endDate);
     this.generating = true;
@@ -676,7 +656,7 @@ export class MasterReportComponent implements OnInit {
   }
 
   loadMore() {
-    if (!this.hasMore) return;
+    if (!this.hasMore || this.loadingMore) return;
     this.loadingMore = true;
     this.fetchPage(this.currentPage, true);
   }
@@ -735,21 +715,30 @@ export class MasterReportComponent implements OnInit {
   }
 
   exportCsv() {
-    const header = 'Date,Voucher No,Type,Account,Category,Item,Qty,Description,Debit,Credit,Balance\n';
-    const openingRow = this.hasOpeningBalance
-      ? `,,,"Opening Balance",,,,,${this.openingDebit},${this.openingCredit},${this.openingBalance}\n`
-      : '';
-    const rows = this.filteredEntries.map(e =>
-      `${new Date(e.date).toLocaleDateString('en-GB')},${e.voucherNo},${e.voucherType},` +
-      `${e.accountName},${e.accountCategory},${e.itemName ?? ''},` +
-      `"${e.quantity ? e.quantity + ' ' + (e.quantityTypeLabel ?? '') : ''}",` +
-      `"${e.description ?? ''}",${e.debit},${e.credit},${e.runningBalance}`
-    ).join('\n');
-    const blob = new Blob([header + openingRow + rows], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `MasterReport_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
+    const rows: unknown[][] = [[
+      'Date', 'Voucher No', 'Type', 'Account', 'Category', 'Item',
+      'Qty', 'Description', 'Debit', 'Credit', 'Balance'
+    ]];
+    if (this.hasOpeningBalance) {
+      rows.push([
+        '', '', '', 'Opening Balance', '', '', '', '',
+        this.openingDebit, this.openingCredit, this.openingBalance
+      ]);
+    }
+    rows.push(...this.filteredEntries.map(e => [
+      new Date(e.date).toLocaleDateString('en-GB'),
+      e.voucherNo,
+      e.voucherType,
+      e.accountName,
+      e.accountCategory,
+      e.itemName ?? '',
+      e.quantity ? `${e.quantity} ${e.quantityTypeLabel ?? ''}`.trim() : '',
+      e.description ?? '',
+      e.debit,
+      e.credit,
+      e.runningBalance
+    ]));
+    downloadCsv(`MasterReport_${new Date().toISOString().split('T')[0]}.csv`, rows);
   }
 
   private getSelectedOptionName(options: SelectOption[], id: number | null) {

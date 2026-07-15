@@ -7,7 +7,7 @@ export class ApiService {
   private http = inject(HttpClient);
   private base = '/api';
 
-  get<T>(path: string, params?: Record<string, any>): Observable<T> {
+  get<T>(path: string, params?: Record<string, string | number | boolean | null | undefined>): Observable<T> {
     let httpParams = new HttpParams();
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
@@ -17,11 +17,11 @@ export class ApiService {
     return this.http.get<T>(`${this.base}${path}`, { params: httpParams });
   }
 
-  post<T>(path: string, body: any): Observable<T> {
+  post<T>(path: string, body: unknown): Observable<T> {
     return this.http.post<T>(`${this.base}${path}`, body);
   }
 
-  put<T>(path: string, body: any): Observable<T> {
+  put<T>(path: string, body: unknown): Observable<T> {
     return this.http.put<T>(`${this.base}${path}`, body);
   }
 

@@ -5,7 +5,6 @@ import { provideAnimations } from '@angular/platform-browser/animations';
 import { DateAdapter, MAT_DATE_FORMATS, MAT_DATE_LOCALE } from '@angular/material/core';
 import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
-import { errorInterceptor } from './core/interceptors/error.interceptor';
 import { AppTitleStrategy } from './core/routing/app-title.strategy';
 import { APP_DATE_FORMATS, AppDateAdapter } from './core/date/app-date-adapter';
 import { AuthService } from './core/services/auth.service';
@@ -17,7 +16,7 @@ function initializeAuth(authService: AuthService): () => Promise<void> {
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
-    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
+    provideHttpClient(withInterceptors([authInterceptor])),
     provideAnimations(),
     { provide: APP_INITIALIZER, useFactory: initializeAuth, deps: [AuthService], multi: true },
     { provide: TitleStrategy, useClass: AppTitleStrategy },

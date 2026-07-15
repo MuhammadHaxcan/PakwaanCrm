@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
+import { Component, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormArray, FormGroup, Validators } from '@angular/forms';
@@ -18,7 +18,8 @@ import { EntryType, QuantityType, VoucherType } from '../../core/models/enums';
 import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
 import { forkJoin } from 'rxjs';
 import { QUANTITY_TYPE_OPTIONS } from '../../shared/constants/select-options';
-import { buildVoucherPrintRoute } from '../../core/utils/voucher-print.utils';
+import { PrintWindowService } from '../../shared/services/print-window.service';
+import { AddLineShortcutDirective } from '../../shared/directives/add-line-shortcut.directive';
 
 type SalesSubmitMode = 'save' | 'saveAndPrint';
 
@@ -29,10 +30,10 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
     CommonModule, ReactiveFormsModule,
     MatCardModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatIconModule, MatDatepickerModule,
-    MatTooltipModule, SearchableSelectComponent
+    MatTooltipModule, SearchableSelectComponent, AddLineShortcutDirective
   ],
   template: `
-    <div class="page-container">
+    <div class="page-container" appAddLineShortcut (appAddLineShortcut)="addLineAndFocus()">
       <div class="page-header">
         <div class="ph-icon"><mat-icon>receipt_long</mat-icon></div>
         <div class="ph-text">
@@ -59,9 +60,6 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
                 <mat-datepicker-toggle matIconSuffix [for]="salesDatePicker"></mat-datepicker-toggle>
                 <mat-datepicker #salesDatePicker></mat-datepicker>
               </mat-form-field>
-            </div>
-
-            <div class="form-row">
               <mat-form-field appearance="outline" style="flex:2">
                 <mat-label>Notes</mat-label>
                 <input matInput formControlName="notes" placeholder="Optional notes..." />
@@ -191,6 +189,7 @@ export class SalesVoucherComponent implements OnInit {
   private masterData = inject(MasterDataService);
   private api = inject(ApiService);
   private toast = inject(ToastService);
+  private printWindows = inject(PrintWindowService);
   @ViewChildren(SearchableSelectComponent) private searchableSelects!: QueryList<SearchableSelectComponent>;
   @ViewChildren('rowCustomerSelect') private rowCustomerSelects!: QueryList<SearchableSelectComponent>;
 
@@ -342,14 +341,6 @@ export class SalesVoucherComponent implements OnInit {
   }
   removeLine(i: number) { if (this.linesArray.length > 1) this.linesArray.removeAt(i); }
 
-  @HostListener('document:keydown', ['$event'])
-  onShortcut(event: KeyboardEvent) {
-    if (event.altKey && event.key.toLowerCase() === 'n') {
-      event.preventDefault();
-      this.addLineAndFocus();
-    }
-  }
-
   private closeOpenDropdowns() {
     this.searchableSelects.forEach(select => select.closeDropdown());
   }
@@ -364,7 +355,14 @@ export class SalesVoucherComponent implements OnInit {
     const req: CreateSalesVoucherRequest = {
       date: formatDateForApi(val.date),
       notes: val.notes,
-      lines: val.lines.map((l: any) => ({
+      lines: val.lines.map((l: {
+        customerId: number | string;
+        itemId: number | string;
+        quantityType: number | string;
+        quantity: number | string;
+        rate: number | string;
+        description?: string;
+      }) => ({
         customerId: +l.customerId,
         itemId: +l.itemId,
         quantityType: +l.quantityType,
@@ -392,9 +390,11 @@ export class SalesVoucherComponent implements OnInit {
       return;
     }
 
-    const printTabs = mode === 'saveAndPrint'
-      ? this.preOpenPrintTabs(this.getDistinctCustomerCount())
-      : [];
+    const expectedPrintCount = mode === 'saveAndPrint' ? this.getDistinctCustomerCount() : 0;
+    const printTabs = this.printWindows.preOpen(expectedPrintCount);
+    if (printTabs.length < expectedPrintCount) {
+      this.toast.info('Allow pop-ups to open every print preview tab.');
+    }
 
     this.api.post<SalesVoucherCreateResult>('/vouchers/sales', req).subscribe({
       next: created => {
@@ -405,7 +405,7 @@ export class SalesVoucherComponent implements OnInit {
               : `Saved ${created.createdCount} vouchers: ${created.voucherNos.join(', ')}`
           );
           if (mode === 'saveAndPrint') {
-            this.routePrintTabs(printTabs, created.voucherNos);
+            this.printWindows.route(printTabs, created.voucherNos);
           }
           this.form.reset({ date: todayDate() });
           this.linesArray.clear();
@@ -414,7 +414,7 @@ export class SalesVoucherComponent implements OnInit {
           this.submitMode = 'save';
       },
       error: (err: Error) => {
-        this.closePrintTabs(printTabs);
+        this.printWindows.close(printTabs);
         this.error = err.message;
         this.submitting = false;
         this.submitMode = 'save';
@@ -430,45 +430,4 @@ export class SalesVoucherComponent implements OnInit {
     return new Set(customerIds).size;
   }
 
-  private preOpenPrintTabs(expectedCount: number): Window[] {
-    const tabs: Window[] = [];
-
-    for (let index = 0; index < expectedCount; index++) {
-      const tab = window.open('about:blank', '_blank');
-      if (!tab) continue;
-
-      try {
-        tab.document.title = 'Preparing print preview';
-        tab.document.body.innerHTML = '<p style="font-family: sans-serif; padding: 24px;">Preparing print preview...</p>';
-      } catch {
-        // Ignore cross-window document write failures and just route the tab later.
-      }
-
-      tabs.push(tab);
-    }
-
-    if (tabs.length < expectedCount) {
-      this.toast.info('Allow pop-ups to open every print preview tab.');
-    }
-
-    return tabs;
-  }
-
-  private routePrintTabs(tabs: Window[], voucherNos: string[]): void {
-    tabs.forEach((tab, index) => {
-      const voucherNo = voucherNos[index];
-      if (!voucherNo) {
-        if (!tab.closed) tab.close();
-        return;
-      }
-
-      tab.location.href = buildVoucherPrintRoute('Sales', voucherNo);
-    });
-  }
-
-  private closePrintTabs(tabs: Window[]): void {
-    tabs.forEach(tab => {
-      if (!tab.closed) tab.close();
-    });
-  }
 }

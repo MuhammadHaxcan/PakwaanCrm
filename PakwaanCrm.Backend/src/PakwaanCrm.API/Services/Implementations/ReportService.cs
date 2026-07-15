@@ -309,8 +309,11 @@ public class ReportService : IReportService
                     })
                     .FirstOrDefaultAsync(ct);
 
-                var totalDebit = periodTotals?.Debit ?? 0;
-                var totalCredit = periodTotals?.Credit ?? 0;
+                if (periodTotals is null)
+                    continue;
+
+                var totalDebit = periodTotals.Debit;
+                var totalCredit = periodTotals.Credit;
 
                 result.Add(new AccountBalanceDto
                 {
@@ -367,8 +370,11 @@ public class ReportService : IReportService
                     })
                     .FirstOrDefaultAsync(ct);
 
-                var totalDebit = periodTotals?.Debit ?? 0;
-                var totalCredit = periodTotals?.Credit ?? 0;
+                if (periodTotals is null)
+                    continue;
+
+                var totalDebit = periodTotals.Debit;
+                var totalCredit = periodTotals.Credit;
 
                 result.Add(new AccountBalanceDto
                 {
@@ -421,8 +427,11 @@ public class ReportService : IReportService
                     })
                     .FirstOrDefaultAsync(ct);
 
-                var totalDebit = periodTotals?.Debit ?? 0;
-                var totalCredit = periodTotals?.Credit ?? 0;
+                if (periodTotals is null)
+                    continue;
+
+                var totalDebit = periodTotals.Debit;
+                var totalCredit = periodTotals.Credit;
 
                 result.Add(new AccountBalanceDto
                 {

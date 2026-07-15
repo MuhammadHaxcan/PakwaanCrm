@@ -1,18 +1,20 @@
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { Component, DestroyRef, ElementRef, OnInit, ViewChild, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { ActivatedRoute } from '@angular/router';
-import { Subscription } from 'rxjs';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
-import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { SafeResourceUrl } from '@angular/platform-browser';
 import { buildReportPrintApiPath } from '../../core/utils/report-print.utils';
+import { PdfObjectUrlService } from '../../shared/services/pdf-object-url.service';
 
 @Component({
   selector: 'app-print-report-page',
   standalone: true,
   imports: [CommonModule, MatButtonModule, MatIconModule, LoadingSpinnerComponent],
+  providers: [PdfObjectUrlService],
   template: `
     <div class="print-page">
       <div class="topbar">
@@ -22,14 +24,14 @@ import { buildReportPrintApiPath } from '../../core/utils/report-print.utils';
         </div>
         <div class="actions">
           <button mat-stroked-button type="button" (click)="retry()" [disabled]="loading"><mat-icon>refresh</mat-icon>Retry</button>
-          <button mat-stroked-button type="button" (click)="open()" [disabled]="!objectUrl || loading"><mat-icon>open_in_new</mat-icon>Open</button>
-          <button mat-flat-button color="primary" type="button" (click)="print()" [disabled]="!objectUrl || loading"><mat-icon>print</mat-icon>Print</button>
+          <button mat-stroked-button type="button" (click)="open()" [disabled]="!pdfUrl || loading"><mat-icon>open_in_new</mat-icon>Open</button>
+          <button mat-flat-button color="primary" type="button" (click)="print()" [disabled]="!pdfUrl || loading"><mat-icon>print</mat-icon>Print</button>
         </div>
       </div>
 
       <div *ngIf="loading" class="state"><app-loading-spinner></app-loading-spinner></div>
       <div *ngIf="!loading && error" class="state error">{{ error }}</div>
-      <iframe *ngIf="!loading && pdfUrl" class="frame" [src]="pdfUrl" title="Report PDF"></iframe>
+      <iframe #pdfFrame *ngIf="!loading && pdfUrl" class="frame" [src]="pdfUrl" title="Report PDF"></iframe>
     </div>
   `,
   styles: [`
@@ -44,25 +46,29 @@ import { buildReportPrintApiPath } from '../../core/utils/report-print.utils';
     .frame { flex:1; width:100%; min-height:calc(100vh - 75px); border:0; background:#fff; }
   `]
 })
-export class PrintReportPageComponent implements OnInit, OnDestroy {
+export class PrintReportPageComponent implements OnInit {
+  @ViewChild('pdfFrame') private pdfFrame?: ElementRef<HTMLIFrameElement>;
+
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
-  private readonly sanitizer = inject(DomSanitizer);
-  private querySub?: Subscription;
+  private readonly document = inject(DOCUMENT);
+  private readonly pdfObjectUrl = inject(PdfObjectUrlService);
+  private readonly destroyRef = inject(DestroyRef);
 
   title = 'Report Preview';
   loading = true;
   error = '';
-  objectUrl: string | null = null;
   pdfUrl: SafeResourceUrl | null = null;
   private apiPath = '';
 
   ngOnInit(): void {
-    this.querySub = this.route.queryParamMap.subscribe(() => {
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
       const path = this.route.routeConfig?.path ?? '';
       const reportType = path.includes('master') ? 'master' : 'soa';
       this.title = reportType === 'master' ? 'Master Report PDF' : 'Statement of Account PDF';
-      this.apiPath = buildReportPrintApiPath(reportType, window.location.search);
+      this.apiPath = buildReportPrintApiPath(reportType, this.document.defaultView?.location.search ?? '');
       this.load();
     });
   }
@@ -72,17 +78,11 @@ export class PrintReportPageComponent implements OnInit, OnDestroy {
   }
 
   print(): void {
-    const frame = document.querySelector('.frame') as HTMLIFrameElement | null;
-    frame?.contentWindow?.print();
+    this.pdfFrame?.nativeElement.contentWindow?.print();
   }
 
   open(): void {
-    if (this.objectUrl) window.open(this.objectUrl, '_blank', 'noopener');
-  }
-
-  ngOnDestroy(): void {
-    this.querySub?.unsubscribe();
-    this.cleanup();
+    this.pdfObjectUrl.open();
   }
 
   private load(): void {
@@ -91,8 +91,7 @@ export class PrintReportPageComponent implements OnInit, OnDestroy {
     this.cleanup();
     this.http.get(this.apiPath, { responseType: 'blob' }).subscribe({
       next: blob => {
-        this.objectUrl = URL.createObjectURL(blob);
-        this.pdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.objectUrl);
+        this.pdfUrl = this.pdfObjectUrl.replace(blob);
         this.loading = false;
       },
       error: err => {
@@ -103,10 +102,7 @@ export class PrintReportPageComponent implements OnInit, OnDestroy {
   }
 
   private cleanup(): void {
-    if (this.objectUrl) {
-      URL.revokeObjectURL(this.objectUrl);
-      this.objectUrl = null;
-    }
+    this.pdfObjectUrl.clear();
     this.pdfUrl = null;
   }
 }

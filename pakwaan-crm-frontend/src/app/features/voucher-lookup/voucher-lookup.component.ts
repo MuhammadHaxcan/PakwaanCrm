@@ -71,7 +71,8 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
                     <mat-icon>edit</mat-icon>
                     <span>Edit Voucher</span>
                   </button>
-                  <button mat-flat-button color="warn" type="button" (click)="deleteVoucher()">
+                  <button mat-flat-button color="warn" type="button" (click)="deleteVoucher()"
+                    [disabled]="deleteDialogOpen || deleting">
                     <mat-icon>delete</mat-icon>
                     <span>Delete Voucher</span>
                   </button>
@@ -166,6 +167,8 @@ export class VoucherLookupComponent {
   loading = false;
   notFound = false;
   lookupError = '';
+  deleteDialogOpen = false;
+  deleting = false;
 
   get normalizedVoucherNo() {
     return this.voucherNo.trim().toUpperCase();
@@ -181,7 +184,7 @@ export class VoucherLookupComponent {
 
   lookupVoucher() {
     const voucherNo = this.normalizedVoucherNo;
-    if (!voucherNo) return;
+    if (!voucherNo || this.loading) return;
 
     this.loading = true;
     this.lookupError = '';
@@ -222,24 +225,33 @@ export class VoucherLookupComponent {
   }
 
   deleteVoucher() {
-    if (!this.voucher) return;
+    if (!this.voucher || this.deleteDialogOpen || this.deleting) return;
+
+    const voucher = this.voucher;
+    this.deleteDialogOpen = true;
 
     this.dialog.open(ConfirmDialogComponent, {
       data: {
         title: 'Delete Voucher',
-        message: `Delete voucher "${this.voucher.voucherNo}"?`
+        message: `Delete voucher "${voucher.voucherNo}"?`
       }
     }).afterClosed().subscribe(confirmed => {
-      if (!confirmed || !this.voucher) return;
+      this.deleteDialogOpen = false;
+      if (!confirmed || this.deleting) return;
+      this.deleting = true;
 
-      this.api.delete(`/vouchers/${this.voucher.id}`).subscribe({
+      this.api.delete(`/vouchers/${voucher.id}`).subscribe({
         next: () => {
-          this.toast.success(`Deleted voucher ${this.voucher?.voucherNo}`);
+          this.deleting = false;
+          this.toast.success(`Deleted voucher ${voucher.voucherNo}`);
           this.voucher = null;
           this.notFound = false;
           this.lookupError = '';
         },
-        error: (err: Error) => this.toast.error(err.message)
+        error: (err: Error) => {
+          this.deleting = false;
+          this.toast.error(err.message);
+        }
       });
     });
   }

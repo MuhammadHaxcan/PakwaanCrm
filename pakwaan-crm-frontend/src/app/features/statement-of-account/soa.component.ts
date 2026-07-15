@@ -20,6 +20,7 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
 import { ACCOUNT_TYPE_OPTIONS } from '../../shared/constants/select-options';
 import { buildVoucherPrintRoute } from '../../core/utils/voucher-print.utils';
 import { buildSoaPrintUrl } from '../../core/utils/report-print.utils';
+import { downloadCsv } from '../../shared/utils/csv';
 
 @Component({
   selector: 'app-soa',
@@ -445,6 +446,7 @@ export class SoaComponent implements OnInit {
   }
 
   generate() {
+    if (this.generating) return;
     const normalizedStartDate = parseDateInput(this.filterForm.get('startDate')?.value);
     const normalizedEndDate = parseDateInput(this.filterForm.get('endDate')?.value);
     this.filterForm.patchValue({
@@ -491,15 +493,17 @@ export class SoaComponent implements OnInit {
 
   exportCsv() {
     if (!this.soa) return;
-    const header = 'Date,Voucher No,Type,Description,Debit,Credit,Balance\n';
-    const rows = this.filteredEntries.map(entry =>
-      `${new Date(entry.date).toLocaleDateString('en-GB')},${entry.voucherNo},${entry.voucherType},"${entry.description ?? ''}",${entry.debit},${entry.credit},${entry.runningBalance}`
-    ).join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv' });
-    const anchor = document.createElement('a');
-    anchor.href = URL.createObjectURL(blob);
-    anchor.download = `SOA_${this.soa.accountName}_${new Date().toISOString().split('T')[0]}.csv`;
-    anchor.click();
+    const rows: unknown[][] = [['Date', 'Voucher No', 'Type', 'Description', 'Debit', 'Credit', 'Balance']];
+    rows.push(...this.filteredEntries.map(entry => [
+      new Date(entry.date).toLocaleDateString('en-GB'),
+      entry.voucherNo,
+      entry.voucherType,
+      entry.description ?? '',
+      entry.debit,
+      entry.credit,
+      entry.runningBalance
+    ]));
+    downloadCsv(`SOA_${this.soa.accountName}_${new Date().toISOString().split('T')[0]}.csv`, rows);
   }
 
   getVoucherPrintRoute(voucherType: string, voucherNo: string): string {
