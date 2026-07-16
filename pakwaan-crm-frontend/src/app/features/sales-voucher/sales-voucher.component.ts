@@ -13,7 +13,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
 import { MasterDataService } from '../../core/services/master-data.service';
 import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
-import { Item, CreateSalesVoucherRequest, SalesVoucherCreateResult, VoucherDetail } from '../../core/models/models';
+import { Item, CreateSalesVoucherRequest, SalesOrderDetail, SalesVoucherCreateResult, VoucherDetail } from '../../core/models/models';
 import { EntryType, QuantityType, VoucherType } from '../../core/models/enums';
 import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
 import { forkJoin } from 'rxjs';
@@ -37,9 +37,10 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
       <div class="page-header">
         <div class="ph-icon"><mat-icon>receipt_long</mat-icon></div>
         <div class="ph-text">
-          <h2>{{ isEditMode ? 'Edit Sales Voucher' : 'Sales Voucher' }}</h2>
+          <h2>{{ isOrderEditMode ? 'Edit Sales Order' : isEditMode ? 'Edit Sales Voucher' : 'Sales Voucher' }}</h2>
           <p>Record credit sales with customer-wise rows and credit total sales revenue</p>
           <p *ngIf="isEditMode && voucherNo" style="margin-top:6px;font-weight:600;color:#3949ab">Voucher: {{ voucherNo }}</p>
+          <p *ngIf="isOrderEditMode && salesOrderNo" style="margin-top:6px;font-weight:600;color:#3949ab">Sales Order: {{ salesOrderNo }}</p>
         </div>
       </div>
 
@@ -80,7 +81,8 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
                     <th style="width:130px">Unit</th>
                     <th style="width:90px">Qty</th>
                     <th style="width:100px">Rate (PKR)</th>
-                    <th style="width:110px">Amount (PKR)</th>
+                    <th style="width:110px">Delivery Charges</th>
+                    <th style="width:110px">Total Amount</th>
                     <th style="width:170px">Line Description</th>
                     <th style="width:44px"></th>
                   </tr>
@@ -120,7 +122,11 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
                         (input)="calcAmount(i)" />
                     </td>
                     <td>
-                      <span class="amount-display">{{ getAmount(i) | number:'1.2-2' }}</span>
+                      <input type="number" class="inline-input w-fixed"
+                        formControlName="deliveryCharge" placeholder="0.00" min="0" step="0.01" />
+                    </td>
+                    <td>
+                      <span class="amount-display">{{ getLineTotal(i) | number:'1.2-2' }}</span>
                     </td>
                     <td>
                       <input class="inline-input w-full" formControlName="description" placeholder="Optional line note..." />
@@ -136,9 +142,10 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
                 </tbody>
                 <tfoot>
                   <tr class="total-row">
-                    <td colspan="6" class="text-right font-bold" style="padding-right:16px">Total Amount</td>
+                    <td colspan="5" class="text-right font-bold" style="padding-right:16px">Totals</td>
+                    <td class="font-bold">{{ deliveryTotal | number:'1.2-2' }}</td>
                     <td class="font-bold text-green" style="font-size:15px">{{ totalAmount | number:'1.2-2' }}</td>
-                    <td></td>
+                    <td colspan="2"></td>
                   </tr>
                 </tfoot>
               </table>
@@ -168,10 +175,10 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
               </ng-container>
               <ng-template #editSubmitButton>
                 <button mat-flat-button color="primary" type="submit"
-                  [disabled]="submitting || form.invalid || hasMixedCustomers"
+                  [disabled]="submitting || form.invalid || (!isOrderEditMode && hasMixedCustomers)"
                   style="padding:0 24px;height:40px">
                   <mat-icon *ngIf="!submitting" style="margin-right:6px">save</mat-icon>
-                  {{ submitting ? 'Saving...' : 'Update Voucher' }}
+                  {{ submitting ? 'Saving...' : isOrderEditMode ? 'Update Sales Order' : 'Update Voucher' }}
                 </button>
               </ng-template>
             </div>
@@ -203,9 +210,12 @@ export class SalesVoucherComponent implements OnInit {
   error = '';
   loadError = '';
   isEditMode = false;
+  isOrderEditMode = false;
   submitMode: SalesSubmitMode = 'save';
   private voucherId: number | null = null;
+  private salesOrderId: number | null = null;
   voucherNo = '';
+  salesOrderNo = '';
 
   ngOnInit() {
     this.form = this.fb.group({
@@ -215,8 +225,32 @@ export class SalesVoucherComponent implements OnInit {
     });
 
     const idParam = this.route.snapshot.paramMap.get('id');
-    this.isEditMode = !!idParam;
+    const orderIdParam = this.route.snapshot.paramMap.get('orderId');
+    this.isOrderEditMode = !!orderIdParam;
+    this.isEditMode = !!idParam || this.isOrderEditMode;
     this.voucherId = idParam ? +idParam : null;
+    this.salesOrderId = orderIdParam ? +orderIdParam : null;
+
+    if (this.isOrderEditMode && this.salesOrderId) {
+      forkJoin({
+        customers: this.masterData.loadCustomers(),
+        items: this.masterData.loadItems(),
+        order: this.api.get<SalesOrderDetail>(`/vouchers/sales-orders/${this.salesOrderId}`)
+      }).subscribe({
+        next: ({ customers, items, order }) => {
+          this.customerOptions = customers.map(c => ({ id: c.id, name: c.name }));
+          this.items = items;
+          this.itemOptions = items.map(i => ({ id: i.id, name: `${i.name} (${i.unitLabel})` }));
+          this.populateSalesOrder(order);
+          this.loading = false;
+        },
+        error: (err: Error) => {
+          this.loadError = err.message;
+          this.loading = false;
+        }
+      });
+      return;
+    }
 
     if (this.isEditMode && this.voucherId) {
       forkJoin({
@@ -258,15 +292,26 @@ export class SalesVoucherComponent implements OnInit {
 
   get linesArray() { return this.form.get('lines') as FormArray; }
 
-  get totalAmount() {
+  get baseAmount() {
     return this.linesArray.controls.reduce((sum, c) => {
       return sum + (+c.get('quantity')?.value || 0) * (+c.get('rate')?.value || 0);
     }, 0);
   }
 
+  get deliveryTotal() {
+    return this.linesArray.controls.reduce((sum, c) => sum + (+c.get('deliveryCharge')?.value || 0), 0);
+  }
+
+  get totalAmount() { return this.baseAmount + this.deliveryTotal; }
+
   getAmount(i: number) {
     const c = this.linesArray.at(i);
     return (+c.get('quantity')?.value || 0) * (+c.get('rate')?.value || 0);
+  }
+
+  getLineTotal(i: number) {
+    const c = this.linesArray.at(i);
+    return this.getAmount(i) + (+c.get('deliveryCharge')?.value || 0);
   }
 
   get hasMixedCustomers() {
@@ -292,6 +337,7 @@ export class SalesVoucherComponent implements OnInit {
       quantityType: [QuantityType.PerPerson, Validators.required],
       quantity: [null, [Validators.required, Validators.min(0.001)]],
       rate: [null, [Validators.required, Validators.min(0)]],
+      deliveryCharge: [0, [Validators.required, Validators.min(0)]],
       description: ['']
     });
 
@@ -327,6 +373,35 @@ export class SalesVoucherComponent implements OnInit {
         quantityType: line.quantityType ?? QuantityType.PerPerson,
         quantity: line.quantity,
         rate: line.rate,
+        deliveryCharge: line.deliveryCharge ?? 0,
+        description: line.description ?? ''
+      }, { emitEvent: false });
+      this.linesArray.push(group);
+    });
+  }
+
+  private populateSalesOrder(order: SalesOrderDetail) {
+    if (order.mode !== 0) {
+      this.loadError = 'This sales order belongs to the customer date-wise editor.';
+      return;
+    }
+
+    this.salesOrderNo = order.orderNo;
+    this.voucherNo = order.voucherNos.join(', ');
+    this.form.patchValue({
+      date: order.lines.length ? parseApiDate(order.lines[0].date) : todayDate(),
+      notes: order.notes ?? ''
+    });
+    this.linesArray.clear();
+    order.lines.forEach(line => {
+      const group = this.createLineGroup();
+      group.patchValue({
+        customerId: line.customerId,
+        itemId: line.itemId,
+        quantityType: line.quantityType,
+        quantity: line.quantity,
+        rate: line.rate,
+        deliveryCharge: line.deliveryCharge,
         description: line.description ?? ''
       }, { emitEvent: false });
       this.linesArray.push(group);
@@ -361,6 +436,7 @@ export class SalesVoucherComponent implements OnInit {
         quantityType: number | string;
         quantity: number | string;
         rate: number | string;
+        deliveryCharge: number | string;
         description?: string;
       }) => ({
         customerId: +l.customerId,
@@ -368,9 +444,27 @@ export class SalesVoucherComponent implements OnInit {
         quantityType: +l.quantityType,
         quantity: +l.quantity,
         rate: +l.rate,
+        deliveryCharge: +l.deliveryCharge || 0,
         description: l.description
       }))
     };
+
+    if (this.isOrderEditMode && this.salesOrderId) {
+      this.api.put<SalesVoucherCreateResult>(`/vouchers/sales-orders/${this.salesOrderId}/customer-wise`, req).subscribe({
+        next: updated => {
+          this.salesOrderNo = updated.salesOrderNo;
+          this.voucherNo = updated.voucherNos.join(', ');
+          this.toast.success(`Updated sales order ${updated.salesOrderNo}`);
+          this.reloadSalesOrder();
+        },
+        error: (err: Error) => {
+          this.error = err.message;
+          this.submitting = false;
+          this.submitMode = 'save';
+        }
+      });
+      return;
+    }
 
     if (this.isEditMode && this.voucherId) {
       this.api.put<VoucherDetail>(`/vouchers/${this.voucherId}/sales`, req).subscribe({
@@ -399,10 +493,11 @@ export class SalesVoucherComponent implements OnInit {
     this.api.post<SalesVoucherCreateResult>('/vouchers/sales', req).subscribe({
       next: created => {
           this.voucherNo = created.voucherNos[0] ?? '';
+          this.salesOrderNo = created.salesOrderNo;
           this.toast.success(
             created.createdCount === 1
-              ? `Saved! Voucher: ${created.voucherNos[0]}`
-              : `Saved ${created.createdCount} vouchers: ${created.voucherNos.join(', ')}`
+              ? `Saved ${created.salesOrderNo}! Voucher: ${created.voucherNos[0]}`
+              : `Saved ${created.salesOrderNo} with ${created.createdCount} vouchers: ${created.voucherNos.join(', ')}`
           );
           if (mode === 'saveAndPrint') {
             this.printWindows.route(printTabs, created.voucherNos);
@@ -428,6 +523,22 @@ export class SalesVoucherComponent implements OnInit {
       .filter(value => value !== null && value !== undefined && value !== '');
 
     return new Set(customerIds).size;
+  }
+
+  private reloadSalesOrder() {
+    if (!this.salesOrderId) return;
+    this.api.get<SalesOrderDetail>(`/vouchers/sales-orders/${this.salesOrderId}`).subscribe({
+      next: order => {
+        this.populateSalesOrder(order);
+        this.submitting = false;
+        this.submitMode = 'save';
+      },
+      error: (err: Error) => {
+        this.error = err.message;
+        this.submitting = false;
+        this.submitMode = 'save';
+      }
+    });
   }
 
 }

@@ -60,6 +60,20 @@ public class VouchersController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
     }
 
+    [HttpGet("sales-orders/{id:int}")]
+    public async Task<IActionResult> GetSalesOrder(int id, CancellationToken ct)
+    {
+        var result = await _service.GetSalesOrderAsync(id, ct);
+        return result == null ? NotFound(new { error = "Sales order not found." }) : Ok(result);
+    }
+
+    [HttpGet("sales-orders/by-number/{orderNo}")]
+    public async Task<IActionResult> GetSalesOrderByNumber(string orderNo, CancellationToken ct)
+    {
+        var result = await _service.GetSalesOrderByNumberAsync(orderNo, ct);
+        return result == null ? NotFound(new { error = "Sales order not found." }) : Ok(result);
+    }
+
     [HttpPost("sales/customer-dates")]
     public async Task<IActionResult> CreateCustomerDateSales([FromBody] CreateCustomerDateSalesVoucherRequest request, CancellationToken ct)
     {
@@ -71,6 +85,20 @@ public class VouchersController : ControllerBase
     public async Task<IActionResult> UpdateSales(int id, [FromBody] CreateSalesVoucherRequest request, CancellationToken ct)
     {
         var result = await _service.UpdateSalesVoucherAsync(id, request, ct);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
+    }
+
+    [HttpPut("sales-orders/{id:int}/customer-wise")]
+    public async Task<IActionResult> UpdateCustomerWiseSalesOrder(int id, [FromBody] CreateSalesVoucherRequest request, CancellationToken ct)
+    {
+        var result = await _service.UpdateCustomerWiseSalesOrderAsync(id, request, ct);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
+    }
+
+    [HttpPut("sales-orders/{id:int}/customer-dates")]
+    public async Task<IActionResult> UpdateCustomerDateSalesOrder(int id, [FromBody] CreateCustomerDateSalesVoucherRequest request, CancellationToken ct)
+    {
+        var result = await _service.UpdateCustomerDateSalesOrderAsync(id, request, ct);
         return result.IsSuccess ? Ok(result.Value) : BadRequest(new { error = result.Error });
     }
 
@@ -106,6 +134,13 @@ public class VouchersController : ControllerBase
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var result = await _service.DeleteAsync(id, ct);
+        return result.IsSuccess ? Ok() : BadRequest(new { error = result.Error });
+    }
+
+    [HttpDelete("sales-orders/{id:int}")]
+    public async Task<IActionResult> DeleteSalesOrder(int id, CancellationToken ct)
+    {
+        var result = await _service.DeleteSalesOrderAsync(id, ct);
         return result.IsSuccess ? Ok() : BadRequest(new { error = result.Error });
     }
 

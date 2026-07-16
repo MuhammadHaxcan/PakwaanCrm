@@ -82,6 +82,8 @@ public class VoucherPrintService : IVoucherPrintService
                                 .FontColor(Colors.Blue.Medium);
                             left.Item().Text($"{(isSalesInvoice ? "Invoice No" : "Voucher No")}: {voucher.VoucherNo}").SemiBold();
                             left.Item().Text($"{(isSalesInvoice ? "Invoice Date" : "Date")}: {voucher.Date:dd/MM/yyyy}");
+                            if (isSalesInvoice)
+                                left.Item().Text("All amounts are in PKR").FontSize(8).FontColor(Colors.Grey.Darken1);
                         });
 
                         row.ConstantItem(130).Column(right =>
@@ -143,6 +145,8 @@ public class VoucherPrintService : IVoucherPrintService
                                 columns.RelativeColumn(1.6f);
                                 columns.RelativeColumn(1f);
                                 columns.RelativeColumn(1f);
+                                columns.RelativeColumn(1.15f);
+                                columns.RelativeColumn(1.15f);
                                 columns.RelativeColumn(1.2f);
                             });
 
@@ -152,8 +156,10 @@ public class VoucherPrintService : IVoucherPrintService
                                 header.Cell().Element(CellStyle).Text("Item");
                                 header.Cell().Element(CellStyle).Text("Description");
                                 header.Cell().Element(CellStyle).AlignRight().Text("Qty");
-                                header.Cell().Element(CellStyle).AlignRight().Text("Rate");
-                                header.Cell().Element(CellStyle).AlignRight().Text("Amount");
+                                header.Cell().Element(CellStyle).AlignRight().Text("Rate (PKR)");
+                                header.Cell().Element(CellStyle).AlignRight().Text("Base Amount");
+                                header.Cell().Element(CellStyle).AlignRight().Text("Delivery");
+                                header.Cell().Element(CellStyle).AlignRight().Text("Line Total");
                             });
 
                             for (var i = 0; i < invoiceLines.Count; i++)
@@ -167,26 +173,52 @@ public class VoucherPrintService : IVoucherPrintService
                                     ? $"{qty:0.##} {qtyUnit}".Trim()
                                     : string.Empty;
                                 var rate = line.Rate ?? 0;
-                                var lineAmount = line.Debit > 0 ? line.Debit : qty * rate;
+                                var baseAmount = qty * rate;
+                                var lineAmount = line.Debit > 0 ? line.Debit : baseAmount + line.DeliveryCharge;
 
                                 table.Cell().Element(RowStyle).AlignCenter().Text((i + 1).ToString());
                                 table.Cell().Element(RowStyle).Text(itemName);
                                 table.Cell().Element(RowStyle).Text(description);
                                 table.Cell().Element(RowStyle).AlignRight().Text(qtyText);
-                                table.Cell().Element(RowStyle).AlignRight().Text(rate > 0 ? rate.ToString("0.00") : string.Empty);
-                                table.Cell().Element(RowStyle).AlignRight().Text(lineAmount > 0 ? lineAmount.ToString("0.00") : "0.00");
+                                table.Cell().Element(RowStyle).AlignRight().Text(rate.ToString("0.00"));
+                                table.Cell().Element(RowStyle).AlignRight().Text(baseAmount.ToString("0.00"));
+                                table.Cell().Element(RowStyle).AlignRight().Text(line.DeliveryCharge.ToString("0.00"));
+                                table.Cell().Element(RowStyle).AlignRight().Text(lineAmount.ToString("0.00")).SemiBold();
                             }
                         });
 
-                        column.Item().PaddingTop(12).AlignRight().Column(totalColumn =>
+                        column.Item().PaddingTop(12).AlignRight().Width(255).Border(1).BorderColor(Colors.Blue.Lighten2)
+                            .Background(Colors.Blue.Lighten5).Padding(10).Column(totalColumn =>
                         {
+                            var baseTotal = invoiceLines.Sum(line => (line.Quantity ?? 0) * (line.Rate ?? 0));
+                            var deliveryTotal = invoiceLines.Sum(line => line.DeliveryCharge);
                             var grossTotal = invoiceLines.Sum(line => line.Debit);
-                            totalColumn.Item().Text($"Total: {grossTotal:0.00}")
-                                .SemiBold()
-                                .FontSize(12)
-                                .FontColor(Colors.Blue.Darken2);
-                            totalColumn.Item().PaddingTop(4).Text($"Previous Balance: {FormatMoneyOrNa(balanceSummary.PreviousBalance)}");
-                            totalColumn.Item().Text($"Current Running Balance: {FormatMoneyOrNa(balanceSummary.CurrentRunningBalance)}");
+                            totalColumn.Item().Row(row =>
+                            {
+                                row.RelativeItem().Text("Base Amount");
+                                row.ConstantItem(90).AlignRight().Text($"{baseTotal:0.00}");
+                            });
+                            totalColumn.Item().Row(row =>
+                            {
+                                row.RelativeItem().Text("Delivery Charges").SemiBold();
+                                row.ConstantItem(90).AlignRight().Text($"{deliveryTotal:0.00}").SemiBold();
+                            });
+                            totalColumn.Item().PaddingVertical(4).LineHorizontal(1).LineColor(Colors.Blue.Lighten2);
+                            totalColumn.Item().Row(row =>
+                            {
+                                row.RelativeItem().Text("Invoice Total").SemiBold().FontSize(12).FontColor(Colors.Blue.Darken2);
+                                row.ConstantItem(90).AlignRight().Text($"{grossTotal:0.00}").SemiBold().FontSize(12).FontColor(Colors.Blue.Darken2);
+                            });
+                            totalColumn.Item().PaddingTop(6).Row(row =>
+                            {
+                                row.RelativeItem().Text("Previous Balance").FontSize(9);
+                                row.ConstantItem(90).AlignRight().Text(FormatMoneyOrNa(balanceSummary.PreviousBalance)).FontSize(9);
+                            });
+                            totalColumn.Item().Row(row =>
+                            {
+                                row.RelativeItem().Text("Current Balance").SemiBold().FontSize(9);
+                                row.ConstantItem(90).AlignRight().Text(FormatMoneyOrNa(balanceSummary.CurrentRunningBalance)).SemiBold().FontSize(9);
+                            });
                         });
                     }
                     else

@@ -1,4 +1,4 @@
-import { EntryType, ItemUnit, QuantityType, VoucherType } from './enums';
+import { EntryType, ItemUnit, QuantityType, SalesOrderMode, VoucherType } from './enums';
 
 export interface Customer {
   id: number; name: string; phone?: string; address?: string;
@@ -28,15 +28,18 @@ export interface VoucherLine {
   accountId?: number; accountName?: string;
   freeText?: string; itemId?: number; itemName?: string;
   quantityType?: QuantityType; quantity?: number; rate?: number;
-  description?: string; debit: number; credit: number;
+  deliveryCharge: number; description?: string; debit: number; credit: number;
 }
 export interface VoucherDetail {
   id: number; voucherNo: string; date: string;
   voucherType: VoucherType; voucherTypeLabel: string; description?: string; notes?: string;
+  salesOrderId?: number; salesOrderNo?: string; salesOrderMode?: SalesOrderMode;
   createdAt: string; lines: VoucherLine[];
 }
 
 export interface SalesVoucherCreateResult {
+  salesOrderId: number;
+  salesOrderNo: string;
   createdCount: number;
   voucherNos: string[];
   vouchers: VoucherDetail[];
@@ -44,18 +47,19 @@ export interface SalesVoucherCreateResult {
 
 // Report models
 export interface SoaEntry {
-  date: string; voucherNo: string; voucherType: string;
-  description?: string; debit: number; credit: number; runningBalance: number;
+  date: string; voucherNo: string; salesOrderNo?: string; voucherType: string;
+  itemName?: string; quantity?: number; quantityTypeLabel?: string; rate?: number;
+  description?: string; deliveryCharge: number; debit: number; credit: number; runningBalance: number;
 }
 export interface SoaResponse {
   accountName: string; accountType: string; openingBalance: number;
   entries: SoaEntry[]; closingBalance: number; totalDebit: number; totalCredit: number;
 }
 export interface MasterReportEntry {
-  date: string; voucherNo: string; voucherType: string; description?: string;
+  date: string; voucherNo: string; salesOrderNo?: string; voucherType: string; description?: string;
   accountName: string; accountCategory: string;
   itemName?: string; quantity?: number; quantityTypeLabel?: string; rate?: number;
-  debit: number; credit: number; runningBalance: number;
+  deliveryCharge: number; debit: number; credit: number; runningBalance: number;
 }
 export interface MasterReportResponse {
   entries: MasterReportEntry[]; totalRecords: number;
@@ -76,10 +80,23 @@ export interface CreateAccountRequest { name: string; }
 export interface SalesLineRequest {
   customerId: number;
   itemId: number; quantityType: QuantityType;
-  quantity: number; rate: number; description?: string;
+  quantity: number; rate: number; deliveryCharge: number; description?: string;
 }
 export interface CreateSalesVoucherRequest {
   date: string; description?: string; notes?: string; lines: SalesLineRequest[];
+}
+
+export interface SalesOrderLine {
+  voucherId: number; voucherNo: string; date: string;
+  customerId: number; customerName: string; itemId: number; itemName: string;
+  quantityType: QuantityType; quantity: number; rate: number; deliveryCharge: number;
+  description?: string;
+}
+
+export interface SalesOrderDetail {
+  id: number; orderNo: string; mode: SalesOrderMode; modeLabel: string;
+  description?: string; notes?: string; createdAt: string;
+  voucherNos: string[]; lines: SalesOrderLine[];
 }
 
 export interface CustomerDateSalesLineRequest {
@@ -88,6 +105,7 @@ export interface CustomerDateSalesLineRequest {
   quantityType: QuantityType;
   quantity: number;
   rate: number;
+  deliveryCharge: number;
   description?: string;
 }
 

@@ -115,8 +115,9 @@ a.mat-mdc-button-base:focus-visible {
 /* ── Page layout ────────────────────────────────────────────── */
 .page-container {
   padding: 28px 24px;
-  max-width: 1440px;
+  max-width: 1800px;
   margin: 0 auto;
+  zoom: 0.8;
 }
 
 /* ── Page header block ──────────────────────────────────────── */

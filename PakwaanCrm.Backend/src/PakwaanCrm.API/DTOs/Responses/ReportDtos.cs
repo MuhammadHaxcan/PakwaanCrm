@@ -4,8 +4,14 @@ public class SoaEntryDto
 {
     public DateTime Date { get; set; }
     public string VoucherNo { get; set; } = string.Empty;
+    public string? SalesOrderNo { get; set; }
     public string VoucherType { get; set; } = string.Empty;
+    public string? ItemName { get; set; }
+    public decimal? Quantity { get; set; }
+    public string? QuantityTypeLabel { get; set; }
+    public decimal? Rate { get; set; }
     public string? Description { get; set; }
+    public decimal DeliveryCharge { get; set; }
     public decimal Debit { get; set; }
     public decimal Credit { get; set; }
     public decimal RunningBalance { get; set; }
@@ -26,6 +32,7 @@ public class MasterReportEntryDto
 {
     public DateTime Date { get; set; }
     public string VoucherNo { get; set; } = string.Empty;
+    public string? SalesOrderNo { get; set; }
     public string VoucherType { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string AccountName { get; set; } = string.Empty;
@@ -34,6 +41,7 @@ public class MasterReportEntryDto
     public decimal? Quantity { get; set; }
     public string? QuantityTypeLabel { get; set; }
     public decimal? Rate { get; set; }
+    public decimal DeliveryCharge { get; set; }
     public decimal Debit { get; set; }
     public decimal Credit { get; set; }
     public decimal RunningBalance { get; set; }

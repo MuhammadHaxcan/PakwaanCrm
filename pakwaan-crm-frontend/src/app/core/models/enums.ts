@@ -1,4 +1,5 @@
 export enum VoucherType { Sales = 0, General = 1, Purchase = 2 }
+export enum SalesOrderMode { CustomerWise = 0, CustomerDateWise = 1 }
 
 export enum EntryType {
   CustomerDebit  = 0,  // Dr. Customer  — sale on credit

@@ -58,6 +58,7 @@ describe('MasterReportComponent request guards', () => {
       voucherType: 'Journal',
       accountName: 'Cash',
       accountCategory: 'CashDebit',
+      deliveryCharge: 0,
       debit: 0,
       credit: 0,
       runningBalance: 0

@@ -10,8 +10,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
 import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
-import { VoucherDetail, VoucherLine } from '../../core/models/models';
-import { QuantityType, VoucherType } from '../../core/models/enums';
+import { SalesOrderDetail, SalesOrderLine, VoucherDetail, VoucherLine } from '../../core/models/models';
+import { QuantityType, SalesOrderMode, VoucherType } from '../../core/models/enums';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 
 @Component({
@@ -32,7 +32,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
         <div class="ph-icon"><mat-icon>manage_search</mat-icon></div>
         <div class="ph-text">
           <h2>Voucher Lookup</h2>
-          <p>Find a voucher by full voucher number, then review, edit, or delete it</p>
+          <p>Find a sales order or voucher by its full SO or SV/JV/PV number</p>
         </div>
       </div>
 
@@ -41,7 +41,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
           <form class="form-row" (ngSubmit)="lookupVoucher()">
             <mat-form-field appearance="outline" style="flex:1.5">
               <mat-label>Voucher Number</mat-label>
-              <input matInput [(ngModel)]="voucherNo" name="voucherNo" placeholder="e.g. SV-0001" />
+              <input matInput [(ngModel)]="voucherNo" name="voucherNo" placeholder="e.g. SO-0001 or SV-0001" />
             </mat-form-field>
 
             <button mat-flat-button color="primary" type="submit" [disabled]="loading || !normalizedVoucherNo" class="lookup-button">
@@ -64,6 +64,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
                   </div>
                   <div *ngIf="voucher.description" style="margin-top:8px;font-size:13px;color:#334155">{{ voucher.description }}</div>
                   <div *ngIf="voucher.notes" style="margin-top:6px;font-size:12px;color:#64748b">Notes: {{ voucher.notes }}</div>
+                  <div *ngIf="voucher.salesOrderNo" style="margin-top:6px;font-size:12px;color:#3949ab">Parent: {{ voucher.salesOrderNo }}</div>
                 </div>
 
                 <div class="voucher-actions">
@@ -93,6 +94,9 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
                     <th>Account / Name</th>
                     <th>Item / Line</th>
                     <th class="text-right">Qty</th>
+                    <th class="text-right">Base Amount</th>
+                    <th class="text-right">Delivery</th>
+                    <th class="text-right">Total</th>
                     <th>Description</th>
                     <th class="text-right">Debit</th>
                     <th class="text-right">Credit</th>
@@ -104,11 +108,42 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
                     <td>{{ getAccountLabel(line) }}</td>
                     <td>{{ line.itemName || line.freeText || '-' }}</td>
                     <td class="text-right">{{ line.quantity ? (line.quantity + ' ' + getUnitLabel(line.quantityType)) : '' }}</td>
+                    <td class="text-right">{{ getBaseAmount(line) | number:'1.2-2' }}</td>
+                    <td class="text-right">{{ line.deliveryCharge | number:'1.2-2' }}</td>
+                    <td class="text-right">{{ getLineTotal(line) | number:'1.2-2' }}</td>
                     <td>{{ line.description || '-' }}</td>
                     <td class="text-right">{{ line.debit | number:'1.2-2' }}</td>
                     <td class="text-right">{{ line.credit | number:'1.2-2' }}</td>
                   </tr>
                 </tbody>
+              </table>
+            </div>
+          </ng-container>
+
+          <ng-container *ngIf="salesOrder && !loading">
+            <div class="filter-panel" style="margin-top:18px;margin-bottom:18px">
+              <div class="voucher-summary">
+                <div>
+                  <h3 style="margin:0 0 6px;font-size:18px">{{ salesOrder.orderNo }}</h3>
+                  <div class="text-muted" style="font-size:13px">{{ salesOrder.modeLabel }} · {{ salesOrder.voucherNos.join(', ') }}</div>
+                  <div *ngIf="salesOrder.notes" style="margin-top:6px;font-size:12px;color:#64748b">Notes: {{ salesOrder.notes }}</div>
+                </div>
+                <div class="voucher-actions">
+                  <button mat-stroked-button color="primary" type="button" (click)="editSalesOrder()"><mat-icon>edit</mat-icon> Edit Sales Order</button>
+                  <button mat-flat-button color="warn" type="button" (click)="deleteSalesOrder()" [disabled]="deleteDialogOpen || deleting"><mat-icon>delete</mat-icon> Delete Sales Order</button>
+                </div>
+              </div>
+            </div>
+            <div class="line-grid">
+              <table>
+                <thead><tr><th>Voucher</th><th>Date</th><th>Customer</th><th>Item</th><th class="text-right">Qty</th><th class="text-right">Base</th><th class="text-right">Delivery</th><th class="text-right">Total</th><th>Description</th></tr></thead>
+                <tbody><tr *ngFor="let line of salesOrder.lines">
+                  <td>{{ line.voucherNo }}</td><td>{{ line.date | date:'dd/MM/yyyy' }}</td><td>{{ line.customerName }}</td><td>{{ line.itemName }}</td>
+                  <td class="text-right">{{ line.quantity }} {{ getUnitLabel(line.quantityType) }}</td>
+                  <td class="text-right">{{ getOrderBaseAmount(line) | number:'1.2-2' }}</td>
+                  <td class="text-right">{{ line.deliveryCharge | number:'1.2-2' }}</td>
+                  <td class="text-right">{{ getOrderLineTotal(line) | number:'1.2-2' }}</td><td>{{ line.description || '-' }}</td>
+                </tr></tbody>
               </table>
             </div>
           </ng-container>
@@ -164,6 +199,7 @@ export class VoucherLookupComponent {
 
   voucherNo = '';
   voucher: VoucherDetail | null = null;
+  salesOrder: SalesOrderDetail | null = null;
   loading = false;
   notFound = false;
   lookupError = '';
@@ -190,10 +226,16 @@ export class VoucherLookupComponent {
     this.lookupError = '';
     this.notFound = false;
     this.voucher = null;
+    this.salesOrder = null;
 
-    this.api.get<VoucherDetail>(`/vouchers/by-number/${encodeURIComponent(voucherNo)}`).subscribe({
-      next: voucher => {
-        this.voucher = voucher;
+    const isSalesOrder = voucherNo.startsWith('SO-');
+    const path = isSalesOrder
+      ? `/vouchers/sales-orders/by-number/${encodeURIComponent(voucherNo)}`
+      : `/vouchers/by-number/${encodeURIComponent(voucherNo)}`;
+    this.api.get<VoucherDetail | SalesOrderDetail>(path).subscribe({
+      next: result => {
+        if (isSalesOrder) this.salesOrder = result as SalesOrderDetail;
+        else this.voucher = result as VoucherDetail;
         this.loading = false;
       },
       error: (err: Error) => {
@@ -211,6 +253,11 @@ export class VoucherLookupComponent {
   editVoucher() {
     if (!this.voucher) return;
 
+    if (this.voucher.salesOrderId && this.voucher.salesOrderMode !== undefined) {
+      this.navigateToSalesOrder(this.voucher.salesOrderId, this.voucher.salesOrderMode);
+      return;
+    }
+
     switch (this.voucher.voucherType) {
       case VoucherType.Sales:
         this.router.navigate(['/sales-voucher', this.voucher.id, 'edit']);
@@ -222,6 +269,19 @@ export class VoucherLookupComponent {
         this.router.navigate(['/journal-voucher', this.voucher.id, 'edit']);
         break;
     }
+  }
+
+  editSalesOrder() {
+    if (!this.salesOrder) return;
+    this.navigateToSalesOrder(this.salesOrder.id, this.salesOrder.mode);
+  }
+
+  private navigateToSalesOrder(id: number, mode: SalesOrderMode) {
+    if (mode === SalesOrderMode.CustomerDateWise) {
+      this.router.navigate(['/sales-voucher/customer-dates/order', id, 'edit']);
+      return;
+    }
+    this.router.navigate(['/sales-voucher/order', id, 'edit']);
   }
 
   deleteVoucher() {
@@ -256,6 +316,30 @@ export class VoucherLookupComponent {
     });
   }
 
+  deleteSalesOrder() {
+    if (!this.salesOrder || this.deleteDialogOpen || this.deleting) return;
+    const order = this.salesOrder;
+    this.deleteDialogOpen = true;
+    this.dialog.open(ConfirmDialogComponent, {
+      data: { title: 'Delete Sales Order', message: `Delete sales order "${order.orderNo}" and all child vouchers?` }
+    }).afterClosed().subscribe(confirmed => {
+      this.deleteDialogOpen = false;
+      if (!confirmed || this.deleting) return;
+      this.deleting = true;
+      this.api.delete(`/vouchers/sales-orders/${order.id}`).subscribe({
+        next: () => {
+          this.deleting = false;
+          this.toast.success(`Deleted sales order ${order.orderNo}`);
+          this.salesOrder = null;
+        },
+        error: (err: Error) => {
+          this.deleting = false;
+          this.toast.error(err.message);
+        }
+      });
+    });
+  }
+
   getAccountLabel(line: VoucherLine) {
     return line.customerName || line.vendorName || line.accountName || line.freeText || '-';
   }
@@ -265,4 +349,9 @@ export class VoucherLookupComponent {
     if (quantityType === QuantityType.PerPerson) return 'Per Person';
     return '';
   }
+
+  getBaseAmount(line: VoucherLine) { return (line.quantity ?? 0) * (line.rate ?? 0); }
+  getLineTotal(line: VoucherLine) { return this.getBaseAmount(line) + (line.deliveryCharge ?? 0); }
+  getOrderBaseAmount(line: SalesOrderLine) { return line.quantity * line.rate; }
+  getOrderLineTotal(line: SalesOrderLine) { return this.getOrderBaseAmount(line) + line.deliveryCharge; }
 }

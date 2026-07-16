@@ -104,7 +104,7 @@ import { downloadCsv } from '../../shared/utils/csv';
                 <div class="report-toolbar-actions">
                   <mat-form-field appearance="outline" subscriptSizing="dynamic" class="report-search-field">
                     <mat-label>Search entries</mat-label>
-                    <input matInput [(ngModel)]="searchTerm" [ngModelOptions]="{standalone:true}" placeholder="Voucher, description..." />
+                    <input matInput [(ngModel)]="searchTerm" [ngModelOptions]="{standalone:true}" placeholder="Voucher, SO, item, description..." />
                     <mat-icon matSuffix>search</mat-icon>
                   </mat-form-field>
 
@@ -128,7 +128,12 @@ import { downloadCsv } from '../../shared/utils/csv';
                       <th>Date</th>
                       <th>Voucher No</th>
                       <th>Type</th>
+                      <th>Item</th>
+                      <th class="text-right">Qty</th>
+                      <th>Qty Type</th>
+                      <th class="text-right">Rate</th>
                       <th>Description</th>
+                      <th class="text-right">Delivery Charges</th>
                       <th class="text-right">Debit</th>
                       <th class="text-right">Credit</th>
                       <th class="text-right">Balance</th>
@@ -136,7 +141,8 @@ import { downloadCsv } from '../../shared/utils/csv';
                   </thead>
                   <tbody>
                     <tr class="opening-row">
-                      <td colspan="4"><strong>Opening Balance</strong></td>
+                      <td colspan="8"><strong>Opening Balance</strong></td>
+                      <td></td>
                       <td></td>
                       <td></td>
                       <td class="text-right font-bold">{{ soa.openingBalance | number:'1.2-2' }}</td>
@@ -147,11 +153,17 @@ import { downloadCsv } from '../../shared/utils/csv';
                         <a class="voucher-link" [href]="getVoucherPrintRoute(e.voucherType, e.voucherNo)" target="_blank" rel="noopener">
                           <strong>{{ e.voucherNo }}</strong>
                         </a>
+                        <div *ngIf="e.salesOrderNo" class="sales-order-ref">SO: {{ e.salesOrderNo }}</div>
                       </td>
                       <td>
                         <span class="v-badge" [class.v-sales]="e.voucherType==='Sales'">{{ e.voucherType }}</span>
                       </td>
+                      <td>{{ e.itemName }}</td>
+                      <td class="text-right">{{ e.quantity != null ? (e.quantity | number:'1.0-3') : '' }}</td>
+                      <td>{{ e.quantityTypeLabel }}</td>
+                      <td class="text-right">{{ e.rate != null ? (e.rate | number:'1.2-2') : '' }}</td>
                       <td>{{ e.description }}</td>
+                      <td class="text-right">{{ e.deliveryCharge > 0 ? (e.deliveryCharge | number:'1.2-2') : '' }}</td>
                       <td class="text-right text-red">{{ e.debit > 0 ? (e.debit | number:'1.2-2') : '' }}</td>
                       <td class="text-right text-green">{{ e.credit > 0 ? (e.credit | number:'1.2-2') : '' }}</td>
                       <td class="text-right"
@@ -161,8 +173,9 @@ import { downloadCsv } from '../../shared/utils/csv';
                       </td>
                     </tr>
                     <tr class="closing-row">
-                      <td colspan="3"></td>
+                      <td colspan="7"></td>
                       <td><strong>Closing Balance</strong></td>
+                      <td class="text-right font-bold">{{ totalDelivery | number:'1.2-2' }}</td>
                       <td class="text-right font-bold">{{ soa.totalDebit  | number:'1.2-2' }}</td>
                       <td class="text-right font-bold">{{ soa.totalCredit | number:'1.2-2' }}</td>
                       <td class="text-right font-bold"
@@ -342,6 +355,14 @@ import { downloadCsv } from '../../shared/utils/csv';
       border-color: rgba(27, 63, 139, 0.6);
     }
 
+    .sales-order-ref {
+      margin-top: 2px;
+      color: #3949ab;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
     @media (max-width: 1200px) {
       .soa-filter-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -409,9 +430,16 @@ export class SoaComponent implements OnInit {
     if (!q) return this.soa.entries;
     return this.soa.entries.filter(e =>
       e.voucherNo.toLowerCase().includes(q) ||
+      (e.salesOrderNo ?? '').toLowerCase().includes(q) ||
+      (e.itemName ?? '').toLowerCase().includes(q) ||
+      (e.quantityTypeLabel ?? '').toLowerCase().includes(q) ||
       (e.description ?? '').toLowerCase().includes(q) ||
       e.voucherType.toLowerCase().includes(q)
     );
+  }
+
+  get totalDelivery(): number {
+    return this.filteredEntries.reduce((sum, entry) => sum + entry.deliveryCharge, 0);
   }
 
   ngOnInit() {
@@ -493,12 +521,21 @@ export class SoaComponent implements OnInit {
 
   exportCsv() {
     if (!this.soa) return;
-    const rows: unknown[][] = [['Date', 'Voucher No', 'Type', 'Description', 'Debit', 'Credit', 'Balance']];
+    const rows: unknown[][] = [[
+      'Date', 'Voucher No', 'Sales Order No', 'Type', 'Item', 'Qty', 'Qty Type', 'Rate',
+      'Description', 'Delivery Charges', 'Debit', 'Credit', 'Balance'
+    ]];
     rows.push(...this.filteredEntries.map(entry => [
       new Date(entry.date).toLocaleDateString('en-GB'),
       entry.voucherNo,
+      entry.salesOrderNo ?? '',
       entry.voucherType,
+      entry.itemName ?? '',
+      entry.quantity ?? '',
+      entry.quantityTypeLabel ?? '',
+      entry.rate ?? '',
       entry.description ?? '',
+      entry.deliveryCharge,
       entry.debit,
       entry.credit,
       entry.runningBalance

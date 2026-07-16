@@ -12,6 +12,7 @@ public class AppDbContext : DbContext
     public DbSet<Item> Items => Set<Item>();
     public DbSet<Voucher> Vouchers => Set<Voucher>();
     public DbSet<VoucherLine> VoucherLines => Set<VoucherLine>();
+    public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Account> Accounts => Set<Account>();
@@ -26,6 +27,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Item>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Voucher>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<VoucherLine>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<SalesOrder>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<AppUser>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Account>().HasQueryFilter(e => !e.IsDeleted);
 
@@ -39,9 +41,11 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<VoucherLine>().Property(e => e.Credit).HasPrecision(18, 2);
         modelBuilder.Entity<VoucherLine>().Property(e => e.Quantity).HasPrecision(18, 3);
         modelBuilder.Entity<VoucherLine>().Property(e => e.Rate).HasPrecision(18, 4);
+        modelBuilder.Entity<VoucherLine>().Property(e => e.DeliveryCharge).HasPrecision(18, 2);
 
         // Unique index on VoucherNo
         modelBuilder.Entity<Voucher>().HasIndex(e => e.VoucherNo).IsUnique();
+        modelBuilder.Entity<SalesOrder>().HasIndex(e => e.OrderNo).IsUnique();
         modelBuilder.Entity<AppUser>().HasIndex(e => e.Username).IsUnique();
         modelBuilder.Entity<RefreshToken>().HasIndex(e => e.TokenHash).IsUnique();
 
@@ -51,6 +55,12 @@ public class AppDbContext : DbContext
             .WithMany(v => v.Lines)
             .HasForeignKey(l => l.VoucherId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Voucher>()
+            .HasOne(v => v.SalesOrder)
+            .WithMany(o => o.Vouchers)
+            .HasForeignKey(v => v.SalesOrderId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // VoucherLine → Customer (nullable)
         modelBuilder.Entity<VoucherLine>()

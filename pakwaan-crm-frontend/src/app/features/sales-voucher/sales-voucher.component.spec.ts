@@ -46,4 +46,21 @@ describe('SalesVoucherComponent', () => {
     expect(notesInput.closest('.form-row')).toBe(dateRow);
     expect(dateRow?.querySelectorAll('mat-form-field').length).toBe(2);
   });
+
+  it('calculates base, delivery, and total amounts per line', () => {
+    const component = fixture.componentInstance;
+    component.linesArray.at(0).patchValue({ quantity: 2, rate: 100, deliveryCharge: 25 });
+
+    expect(component.getAmount(0)).toBe(200);
+    expect(component.getLineTotal(0)).toBe(225);
+    expect(component.baseAmount).toBe(200);
+    expect(component.deliveryTotal).toBe(25);
+    expect(component.totalAmount).toBe(225);
+  });
+
+  it('rejects a negative delivery charge', () => {
+    const delivery = fixture.componentInstance.linesArray.at(0).get('deliveryCharge');
+    delivery?.setValue(-1);
+    expect(delivery?.invalid).toBeTrue();
+  });
 });

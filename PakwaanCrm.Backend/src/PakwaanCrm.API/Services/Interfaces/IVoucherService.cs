@@ -9,12 +9,17 @@ public interface IVoucherService
     Task<List<VoucherListDto>> GetListAsync(int? voucherType, int page, int pageSize, CancellationToken ct = default);
     Task<VoucherDetailDto?> GetByIdAsync(int id, CancellationToken ct = default);
     Task<VoucherDetailDto?> GetByVoucherNoAsync(string voucherNo, CancellationToken ct = default);
+    Task<SalesOrderDetailDto?> GetSalesOrderAsync(int id, CancellationToken ct = default);
+    Task<SalesOrderDetailDto?> GetSalesOrderByNumberAsync(string orderNo, CancellationToken ct = default);
     Task<Result<SalesVoucherCreateResultDto>> CreateSalesVoucherAsync(CreateSalesVoucherRequest request, CancellationToken ct = default);
     Task<Result<SalesVoucherCreateResultDto>> CreateCustomerDateSalesVoucherAsync(CreateCustomerDateSalesVoucherRequest request, CancellationToken ct = default);
     Task<Result<VoucherDetailDto>> UpdateSalesVoucherAsync(int id, CreateSalesVoucherRequest request, CancellationToken ct = default);
+    Task<Result<SalesVoucherCreateResultDto>> UpdateCustomerWiseSalesOrderAsync(int id, CreateSalesVoucherRequest request, CancellationToken ct = default);
+    Task<Result<SalesVoucherCreateResultDto>> UpdateCustomerDateSalesOrderAsync(int id, CreateCustomerDateSalesVoucherRequest request, CancellationToken ct = default);
     Task<Result<VoucherDetailDto>> CreateGeneralVoucherAsync(CreateGeneralVoucherRequest request, CancellationToken ct = default);
     Task<Result<VoucherDetailDto>> UpdateGeneralVoucherAsync(int id, CreateGeneralVoucherRequest request, CancellationToken ct = default);
     Task<Result<VoucherDetailDto>> CreateVendorPurchaseAsync(CreateVendorPurchaseRequest request, CancellationToken ct = default);
     Task<Result<VoucherDetailDto>> UpdateVendorPurchaseAsync(int id, CreateVendorPurchaseRequest request, CancellationToken ct = default);
     Task<Result> DeleteAsync(int id, CancellationToken ct = default);
+    Task<Result> DeleteSalesOrderAsync(int id, CancellationToken ct = default);
 }

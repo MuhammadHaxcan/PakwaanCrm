@@ -26,6 +26,7 @@ public class VoucherLine : BaseEntity
     public QuantityType? QuantityType { get; set; }
     public decimal? Quantity { get; set; }
     public decimal? Rate { get; set; }
+    public decimal DeliveryCharge { get; set; } = 0;
 
     public string? Description { get; set; }
     public decimal Debit { get; set; } = 0;

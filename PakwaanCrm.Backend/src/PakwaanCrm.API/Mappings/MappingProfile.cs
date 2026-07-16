@@ -30,7 +30,9 @@ public class MappingProfile : Profile
             .ForMember(d => d.TotalDebit, o => o.MapFrom(s => s.Lines.Sum(l => l.Debit)))
             .ForMember(d => d.TotalCredit, o => o.MapFrom(s => s.Lines.Sum(l => l.Credit)));
 
-        CreateMap<Voucher, VoucherDetailDto>();
+        CreateMap<Voucher, VoucherDetailDto>()
+            .ForMember(d => d.SalesOrderNo, o => o.MapFrom(s => s.SalesOrder != null ? s.SalesOrder.OrderNo : null))
+            .ForMember(d => d.SalesOrderMode, o => o.MapFrom(s => s.SalesOrder != null ? (SalesOrderMode?)s.SalesOrder.Mode : null));
 
         CreateMap<VoucherLine, VoucherLineDto>()
             .ForMember(d => d.CustomerName, o => o.MapFrom(s => s.Customer != null ? s.Customer.Name : null))

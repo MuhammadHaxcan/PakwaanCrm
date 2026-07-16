@@ -24,6 +24,7 @@ public class SalesLineRequest
     public QuantityType QuantityType { get; set; }
     public decimal Quantity { get; set; }
     public decimal Rate { get; set; }
+    public decimal DeliveryCharge { get; set; }
     public string? Description { get; set; }
 }
 
@@ -34,6 +35,7 @@ public class CustomerDateSalesLineRequest
     public QuantityType QuantityType { get; set; }
     public decimal Quantity { get; set; }
     public decimal Rate { get; set; }
+    public decimal DeliveryCharge { get; set; }
     public string? Description { get; set; }
 }
 

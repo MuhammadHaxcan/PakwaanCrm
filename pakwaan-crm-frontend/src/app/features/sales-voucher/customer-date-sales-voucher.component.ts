@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, ElementRef, OnInit, QueryList, ViewChildren, inject } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -9,8 +10,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { forkJoin } from 'rxjs';
-import { formatDateForApi, todayDate } from '../../core/date/date-utils';
-import { CreateCustomerDateSalesVoucherRequest, Item, SalesVoucherCreateResult } from '../../core/models/models';
+import { formatDateForApi, parseApiDate, todayDate } from '../../core/date/date-utils';
+import { CreateCustomerDateSalesVoucherRequest, Item, SalesOrderDetail, SalesVoucherCreateResult } from '../../core/models/models';
 import { QuantityType } from '../../core/models/enums';
 import { ApiService } from '../../core/services/api.service';
 import { MasterDataService } from '../../core/services/master-data.service';
@@ -43,8 +44,9 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
       <div class="page-header">
         <div class="ph-icon"><mat-icon>event_note</mat-icon></div>
         <div class="ph-text">
-          <h2>Customer Date-wise Sales</h2>
+          <h2>{{ isEditMode ? 'Edit Customer Date-wise Sales Order' : 'Customer Date-wise Sales' }}</h2>
           <p>Create separate sales vouchers for one customer across different order dates in one submit</p>
+          <p *ngIf="isEditMode && salesOrderNo" class="helper-copy">Sales Order: {{ salesOrderNo }}</p>
         </div>
       </div>
 
@@ -86,7 +88,8 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
                     <th style="width:130px">Unit</th>
                     <th style="width:90px">Qty</th>
                     <th style="width:100px">Rate (PKR)</th>
-                    <th style="width:110px">Amount (PKR)</th>
+                    <th style="width:110px">Delivery Charges</th>
+                    <th style="width:110px">Total Amount</th>
                     <th style="width:180px">Line Description</th>
                     <th style="width:44px"></th>
                   </tr>
@@ -139,8 +142,10 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
                         (input)="calcAmount(i)" />
                     </td>
                     <td>
-                      <span class="amount-display">{{ getAmount(i) | number:'1.2-2' }}</span>
+                      <input type="number" class="inline-input w-fixed" formControlName="deliveryCharge"
+                        placeholder="0.00" min="0" step="0.01" />
                     </td>
+                    <td><span class="amount-display">{{ getLineTotal(i) | number:'1.2-2' }}</span></td>
                     <td>
                       <input class="inline-input w-full" formControlName="description" placeholder="Optional line note..." />
                     </td>
@@ -159,7 +164,8 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
                 </tbody>
                 <tfoot>
                   <tr class="total-row">
-                    <td colspan="5" class="text-right font-bold total-label">Total Amount</td>
+                    <td colspan="5" class="text-right font-bold total-label">Totals</td>
+                    <td class="font-bold">{{ deliveryTotal | number:'1.2-2' }}</td>
                     <td class="font-bold text-green total-value">{{ totalAmount | number:'1.2-2' }}</td>
                     <td colspan="2"></td>
                   </tr>
@@ -181,9 +187,10 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
                 [disabled]="submitting || form.invalid"
                 class="submit-btn">
                 <mat-icon *ngIf="!submitting || submitMode !== 'save'">save</mat-icon>
-                {{ submitting && submitMode === 'save' ? 'Saving...' : 'Save Voucher' }}
+                {{ submitting && submitMode === 'save' ? 'Saving...' : isEditMode ? 'Update Sales Order' : 'Save Voucher' }}
               </button>
               <button
+                *ngIf="!isEditMode"
                 mat-stroked-button
                 color="primary"
                 type="button"
@@ -279,6 +286,7 @@ type SalesSubmitMode = 'save' | 'saveAndPrint';
 })
 export class CustomerDateSalesVoucherComponent implements OnInit {
   private fb = inject(FormBuilder);
+  private route = inject(ActivatedRoute);
   private masterData = inject(MasterDataService);
   private api = inject(ApiService);
   private toast = inject(ToastService);
@@ -297,6 +305,9 @@ export class CustomerDateSalesVoucherComponent implements OnInit {
   error = '';
   loadError = '';
   submitMode: SalesSubmitMode = 'save';
+  isEditMode = false;
+  private salesOrderId: number | null = null;
+  salesOrderNo = '';
 
   ngOnInit(): void {
     this.form = this.fb.group({
@@ -305,14 +316,28 @@ export class CustomerDateSalesVoucherComponent implements OnInit {
       lines: this.fb.array([this.createLineGroup()])
     });
 
-    forkJoin({
+    const orderIdParam = this.route.snapshot.paramMap.get('orderId');
+    this.salesOrderId = orderIdParam ? +orderIdParam : null;
+    this.isEditMode = !!this.salesOrderId;
+
+    const requests = this.isEditMode && this.salesOrderId
+      ? forkJoin({
+          customers: this.masterData.loadCustomers(),
+          items: this.masterData.loadItems(),
+          order: this.api.get<SalesOrderDetail>(`/vouchers/sales-orders/${this.salesOrderId}`)
+        })
+      : forkJoin({
       customers: this.masterData.loadCustomers(),
       items: this.masterData.loadItems()
-    }).subscribe({
-      next: ({ customers, items }) => {
+        });
+
+    requests.subscribe({
+      next: result => {
+        const { customers, items } = result;
         this.customerOptions = customers.map(customer => ({ id: customer.id, name: customer.name }));
         this.items = items;
         this.itemOptions = items.map(item => ({ id: item.id, name: `${item.name} (${item.unitLabel})` }));
+        if ('order' in result) this.populateSalesOrder(result.order as SalesOrderDetail);
         this.loading = false;
       },
       error: (err: Error) => {
@@ -326,15 +351,26 @@ export class CustomerDateSalesVoucherComponent implements OnInit {
     return this.form.get('lines') as FormArray;
   }
 
-  get totalAmount(): number {
+  get baseAmount(): number {
     return this.linesArray.controls.reduce((sum, control) => {
       return sum + (+control.get('quantity')?.value || 0) * (+control.get('rate')?.value || 0);
     }, 0);
   }
 
+  get deliveryTotal(): number {
+    return this.linesArray.controls.reduce((sum, control) => sum + (+control.get('deliveryCharge')?.value || 0), 0);
+  }
+
+  get totalAmount(): number { return this.baseAmount + this.deliveryTotal; }
+
   getAmount(index: number): number {
     const control = this.linesArray.at(index);
     return (+control.get('quantity')?.value || 0) * (+control.get('rate')?.value || 0);
+  }
+
+  getLineTotal(index: number): number {
+    const control = this.linesArray.at(index);
+    return this.getAmount(index) + (+control.get('deliveryCharge')?.value || 0);
   }
 
   calcAmount(_index: number): void {
@@ -348,6 +384,7 @@ export class CustomerDateSalesVoucherComponent implements OnInit {
       quantityType: [QuantityType.PerPerson, Validators.required],
       quantity: [null, [Validators.required, Validators.min(0.001)]],
       rate: [null, [Validators.required, Validators.min(0)]],
+      deliveryCharge: [0, [Validators.required, Validators.min(0)]],
       description: ['']
     });
 
@@ -382,6 +419,32 @@ export class CustomerDateSalesVoucherComponent implements OnInit {
     this.searchableSelects.forEach(select => select.closeDropdown());
   }
 
+  private populateSalesOrder(order: SalesOrderDetail): void {
+    if (order.mode !== 1) {
+      this.loadError = 'This sales order belongs to the customer-wise editor.';
+      return;
+    }
+    this.salesOrderNo = order.orderNo;
+    this.form.patchValue({
+      customerId: order.lines[0]?.customerId ?? null,
+      notes: order.notes ?? ''
+    });
+    this.linesArray.clear();
+    order.lines.forEach(line => {
+      const group = this.createLineGroup();
+      group.patchValue({
+        date: parseApiDate(line.date),
+        itemId: line.itemId,
+        quantityType: line.quantityType,
+        quantity: line.quantity,
+        rate: line.rate,
+        deliveryCharge: line.deliveryCharge,
+        description: line.description ?? ''
+      }, { emitEvent: false });
+      this.linesArray.push(group);
+    });
+  }
+
   onSubmit(mode: SalesSubmitMode = 'save'): void {
     if (this.form.invalid || this.submitting) return;
 
@@ -399,6 +462,7 @@ export class CustomerDateSalesVoucherComponent implements OnInit {
         quantityType: number | string;
         quantity: number | string;
         rate: number | string;
+        deliveryCharge: number | string;
         description?: string;
       }) => ({
         date: formatDateForApi(line.date),
@@ -406,9 +470,26 @@ export class CustomerDateSalesVoucherComponent implements OnInit {
         quantityType: +line.quantityType,
         quantity: +line.quantity,
         rate: +line.rate,
+        deliveryCharge: +line.deliveryCharge || 0,
         description: line.description
       }))
     };
+
+    if (this.isEditMode && this.salesOrderId) {
+      this.api.put<SalesVoucherCreateResult>(`/vouchers/sales-orders/${this.salesOrderId}/customer-dates`, request).subscribe({
+        next: updated => {
+          this.salesOrderNo = updated.salesOrderNo;
+          this.toast.success(`Updated sales order ${updated.salesOrderNo}`);
+          this.reloadSalesOrder();
+        },
+        error: (err: Error) => {
+          this.error = err.message;
+          this.submitting = false;
+          this.submitMode = 'save';
+        }
+      });
+      return;
+    }
 
     const expectedPrintCount = mode === 'saveAndPrint' ? this.getDistinctDateCount() : 0;
     const printTabs = this.printWindows.preOpen(expectedPrintCount);
@@ -420,8 +501,8 @@ export class CustomerDateSalesVoucherComponent implements OnInit {
       next: created => {
         this.toast.success(
           created.createdCount === 1
-            ? `Saved! Voucher: ${created.voucherNos[0]}`
-            : `Saved ${created.createdCount} vouchers: ${created.voucherNos.join(', ')}`
+            ? `Saved ${created.salesOrderNo}! Voucher: ${created.voucherNos[0]}`
+            : `Saved ${created.salesOrderNo} with ${created.createdCount} vouchers: ${created.voucherNos.join(', ')}`
         );
 
         if (mode === 'saveAndPrint') {
@@ -449,6 +530,22 @@ export class CustomerDateSalesVoucherComponent implements OnInit {
       .filter(value => !!value);
 
     return new Set(dates).size;
+  }
+
+  private reloadSalesOrder(): void {
+    if (!this.salesOrderId) return;
+    this.api.get<SalesOrderDetail>(`/vouchers/sales-orders/${this.salesOrderId}`).subscribe({
+      next: order => {
+        this.populateSalesOrder(order);
+        this.submitting = false;
+        this.submitMode = 'save';
+      },
+      error: (err: Error) => {
+        this.error = err.message;
+        this.submitting = false;
+        this.submitMode = 'save';
+      }
+    });
   }
 
 }

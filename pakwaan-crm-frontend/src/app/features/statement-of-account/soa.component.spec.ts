@@ -39,4 +39,39 @@ describe('SoaComponent request guards', () => {
 
     expect(api.get).toHaveBeenCalledTimes(1);
   });
+
+  it('shows and searches the item, quantity type, quantity, and rate details', () => {
+    component.soa = {
+      accountName: 'Customer 1',
+      accountType: 'Customer',
+      openingBalance: 0,
+      closingBalance: 225,
+      totalDebit: 225,
+      totalCredit: 0,
+      entries: [{
+        date: '2026-07-16',
+        voucherNo: 'SV-0001',
+        salesOrderNo: 'SO-0001',
+        voucherType: 'Sales',
+        itemName: 'Meal',
+        quantity: 2,
+        quantityTypeLabel: 'Per Person',
+        rate: 100,
+        description: 'Lunch',
+        deliveryCharge: 25,
+        debit: 225,
+        credit: 0,
+        runningBalance: 225
+      }]
+    };
+    component.searchTerm = 'meal';
+    fixture.detectChanges();
+
+    expect(component.filteredEntries).toHaveSize(1);
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Qty Type');
+    expect(text).toContain('Meal');
+    expect(text).toContain('Per Person');
+    expect(text).toContain('100.00');
+  });
 });

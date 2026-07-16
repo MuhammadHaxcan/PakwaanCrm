@@ -26,6 +26,16 @@ export const routes: Routes = [
         loadComponent: () => import('./features/sales-voucher/customer-date-sales-voucher.component').then(m => m.CustomerDateSalesVoucherComponent)
       },
       {
+        path: 'sales-voucher/customer-dates/order/:orderId/edit',
+        title: 'Edit Customer Date-wise Sales Order',
+        loadComponent: () => import('./features/sales-voucher/customer-date-sales-voucher.component').then(m => m.CustomerDateSalesVoucherComponent)
+      },
+      {
+        path: 'sales-voucher/order/:orderId/edit',
+        title: 'Edit Sales Order',
+        loadComponent: () => import('./features/sales-voucher/sales-voucher.component').then(m => m.SalesVoucherComponent)
+      },
+      {
         path: 'sales-voucher/:id/edit',
         title: 'Edit Sales Voucher',
         loadComponent: () => import('./features/sales-voucher/sales-voucher.component').then(m => m.SalesVoucherComponent)

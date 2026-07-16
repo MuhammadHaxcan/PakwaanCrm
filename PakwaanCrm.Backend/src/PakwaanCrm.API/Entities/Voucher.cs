@@ -10,5 +10,8 @@ public class Voucher : BaseEntity
     public string? Description { get; set; }
     public string? Notes { get; set; }
 
+    public int? SalesOrderId { get; set; }
+    public SalesOrder? SalesOrder { get; set; }
+
     public ICollection<VoucherLine> Lines { get; set; } = new List<VoucherLine>();
 }

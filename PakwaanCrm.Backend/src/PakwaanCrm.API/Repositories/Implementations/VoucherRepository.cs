@@ -31,6 +31,7 @@ public class VoucherRepository : Repository<Voucher>, IVoucherRepository
 
     public async Task<Voucher?> GetWithLinesAsync(int id, CancellationToken ct = default)
         => await _context.Vouchers
+            .Include(v => v.SalesOrder)
             .Include(v => v.Lines)
                 .ThenInclude(l => l.Customer)
             .Include(v => v.Lines)
@@ -46,6 +47,7 @@ public class VoucherRepository : Repository<Voucher>, IVoucherRepository
         var normalized = voucherNo.Trim().ToUpper();
 
         return await _context.Vouchers
+            .Include(v => v.SalesOrder)
             .Include(v => v.Lines)
                 .ThenInclude(l => l.Customer)
             .Include(v => v.Lines)
@@ -60,6 +62,7 @@ public class VoucherRepository : Repository<Voucher>, IVoucherRepository
     public async Task<List<Voucher>> GetListWithLinesAsync(int? voucherType, int page, int pageSize, CancellationToken ct = default)
     {
         var query = _context.Vouchers
+            .Include(v => v.SalesOrder)
             .Include(v => v.Lines)
                 .ThenInclude(l => l.Customer)
             .Include(v => v.Lines)

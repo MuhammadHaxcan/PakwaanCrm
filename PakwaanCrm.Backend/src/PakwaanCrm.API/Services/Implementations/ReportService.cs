@@ -52,8 +52,8 @@ public class ReportService : IReportService
         var toExclusive = NormalizeDate(endDate)?.AddDays(1);
 
         var accountLinesQuery = isCustomer
-            ? _context.VoucherLines.Include(l => l.Voucher).Where(l => l.CustomerId == accountId)
-            : _context.VoucherLines.Include(l => l.Voucher).Where(l => l.VendorId == accountId);
+            ? _context.VoucherLines.Include(l => l.Voucher).ThenInclude(v => v.SalesOrder).Where(l => l.CustomerId == accountId)
+            : _context.VoucherLines.Include(l => l.Voucher).ThenInclude(v => v.SalesOrder).Where(l => l.VendorId == accountId);
 
         decimal openingBalance = baseOpeningBalance;
         if (fromDate.HasValue)
@@ -81,8 +81,14 @@ public class ReportService : IReportService
             {
                 l.Voucher.Date,
                 l.Voucher.VoucherNo,
+                SalesOrderNo = l.Voucher.SalesOrder != null ? l.Voucher.SalesOrder.OrderNo : null,
                 l.Voucher.VoucherType,
+                ItemName = l.Item != null ? l.Item.Name : null,
+                l.Quantity,
+                l.QuantityType,
+                l.Rate,
                 Description = l.Description ?? l.Voucher.Description,
+                l.DeliveryCharge,
                 l.Debit,
                 l.Credit
             })
@@ -98,8 +104,16 @@ public class ReportService : IReportService
             {
                 Date = entry.Date,
                 VoucherNo = entry.VoucherNo,
+                SalesOrderNo = entry.SalesOrderNo,
                 VoucherType = GetVoucherTypeLabel(entry.VoucherType),
+                ItemName = entry.ItemName,
+                Quantity = entry.Quantity,
+                QuantityTypeLabel = entry.QuantityType.HasValue
+                    ? (entry.QuantityType == QuantityType.PerPerson ? "Per Person" : "Per Kg")
+                    : null,
+                Rate = entry.Rate,
                 Description = entry.Description,
+                DeliveryCharge = entry.DeliveryCharge,
                 Debit = entry.Debit,
                 Credit = entry.Credit,
                 RunningBalance = running
@@ -129,6 +143,7 @@ public class ReportService : IReportService
 
         var query = _context.VoucherLines
             .Include(l => l.Voucher)
+                .ThenInclude(v => v.SalesOrder)
             .Include(l => l.Customer)
             .Include(l => l.Vendor)
             .Include(l => l.Account)
@@ -221,6 +236,7 @@ public class ReportService : IReportService
             {
                 Date = line.Voucher.Date,
                 VoucherNo = line.Voucher.VoucherNo,
+                SalesOrderNo = line.Voucher.SalesOrder?.OrderNo,
                 VoucherType = GetVoucherTypeLabel(line.Voucher.VoucherType),
                 Description = line.Description ?? line.Voucher.Description,
                 AccountName = line.Customer?.Name ?? line.Vendor?.Name ?? line.Account?.Name ?? line.FreeText ?? "-",
@@ -231,6 +247,7 @@ public class ReportService : IReportService
                     ? (line.QuantityType == QuantityType.PerPerson ? "Per Person" : "Per Kg")
                     : null,
                 Rate = line.Rate,
+                DeliveryCharge = line.DeliveryCharge,
                 Debit = line.Debit,
                 Credit = line.Credit,
                 RunningBalance = runningBalance

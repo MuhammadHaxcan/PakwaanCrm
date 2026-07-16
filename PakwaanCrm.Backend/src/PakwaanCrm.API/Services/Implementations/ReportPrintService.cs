@@ -77,6 +77,7 @@ public class ReportPrintService : IReportPrintService
         result.Entries = result.Entries
             .Where(entry =>
                 entry.VoucherNo.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || (entry.SalesOrderNo?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
                 || entry.AccountName.Contains(term, StringComparison.OrdinalIgnoreCase)
                 || (entry.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
                 || (entry.ItemName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false))
@@ -108,9 +109,9 @@ public class ReportPrintService : IReportPrintService
         {
             container.Page(page =>
             {
-                page.Size(PageSizes.A4);
-                page.Margin(24);
-                page.DefaultTextStyle(x => x.FontSize(10));
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(20);
+                page.DefaultTextStyle(x => x.FontSize(8));
 
                 page.Header().Column(c =>
                 {
@@ -121,7 +122,10 @@ public class ReportPrintService : IReportPrintService
                             left.Item().Text("Statement of Account").SemiBold().FontSize(18).FontColor(Colors.Blue.Medium);
                             left.Item().Text($"{soa.AccountName} ({soa.AccountType})").SemiBold();
                             left.Item().Text($"Period: {Fmt(startDate)} to {Fmt(endDate)}");
-                            left.Item().Text($"Opening: {soa.OpeningBalance:0.00}  Debit: {soa.TotalDebit:0.00}  Credit: {soa.TotalCredit:0.00}  Closing: {soa.ClosingBalance:0.00}");
+                            var deliveryTotal = soa.Entries.Sum(entry => entry.DeliveryCharge);
+                            left.Item().Text($"Opening: {soa.OpeningBalance:0.00}   Debit: {soa.TotalDebit:0.00}   Credit: {soa.TotalCredit:0.00}   Delivery: {deliveryTotal:0.00}   Closing: {soa.ClosingBalance:0.00}");
+                            left.Item().Text("Delivery charges are included in the applicable debit amounts. All amounts are in PKR.")
+                                .FontSize(8).FontColor(Colors.Grey.Darken1);
                         });
 
                         row.ConstantItem(130).Column(right =>
@@ -143,21 +147,31 @@ public class ReportPrintService : IReportPrintService
                 {
                     t.ColumnsDefinition(cd =>
                     {
-                        cd.RelativeColumn(1.2f);
-                        cd.RelativeColumn(1.4f);
                         cd.RelativeColumn(1.1f);
-                        cd.RelativeColumn(2.1f);
-                        cd.RelativeColumn(1.1f);
-                        cd.RelativeColumn(1.1f);
-                        cd.RelativeColumn(1.2f);
+                        cd.RelativeColumn(1.35f);
+                        cd.RelativeColumn(0.85f);
+                        cd.RelativeColumn(1.25f);
+                        cd.RelativeColumn(0.65f);
+                        cd.RelativeColumn(0.9f);
+                        cd.RelativeColumn(0.8f);
+                        cd.RelativeColumn(1.8f);
+                        cd.RelativeColumn(0.95f);
+                        cd.RelativeColumn(0.95f);
+                        cd.RelativeColumn(0.95f);
+                        cd.RelativeColumn(1.05f);
                     });
 
                     t.Header(h =>
                     {
                         h.Cell().Element(HeaderCell).Text("Date");
-                        h.Cell().Element(HeaderCell).Text("Voucher");
+                        h.Cell().Element(HeaderCell).Text("Voucher / SO");
                         h.Cell().Element(HeaderCell).Text("Type");
+                        h.Cell().Element(HeaderCell).Text("Item");
+                        h.Cell().Element(HeaderCell).AlignRight().Text("Qty");
+                        h.Cell().Element(HeaderCell).Text("Qty Type");
+                        h.Cell().Element(HeaderCell).AlignRight().Text("Rate");
                         h.Cell().Element(HeaderCell).Text("Description");
+                        h.Cell().Element(HeaderCell).AlignRight().Text("Delivery");
                         h.Cell().Element(HeaderCell).AlignRight().Text("Debit");
                         h.Cell().Element(HeaderCell).AlignRight().Text("Credit");
                         h.Cell().Element(HeaderCell).AlignRight().Text("Balance");
@@ -167,7 +181,12 @@ public class ReportPrintService : IReportPrintService
                     t.Cell().Element(RowCell).Text("");
                     t.Cell().Element(RowCell).Text("");
                     t.Cell().Element(RowCell).Text("");
+                    t.Cell().Element(RowCell).Text("");
+                    t.Cell().Element(RowCell).Text("");
+                    t.Cell().Element(RowCell).Text("");
+                    t.Cell().Element(RowCell).Text("");
                     t.Cell().Element(RowCell).Text("Opening Balance").SemiBold();
+                    t.Cell().Element(RowCell).Text("");
                     t.Cell().Element(RowCell).Text("");
                     t.Cell().Element(RowCell).Text("");
                     t.Cell().Element(RowCell).AlignRight().Text($"{soa.OpeningBalance:0.00}").SemiBold();
@@ -175,13 +194,37 @@ public class ReportPrintService : IReportPrintService
                     foreach (var e in soa.Entries)
                     {
                         t.Cell().Element(RowCell).Text(e.Date.ToString("dd/MM/yyyy"));
-                        t.Cell().Element(RowCell).Text(e.VoucherNo);
+                        t.Cell().Element(RowCell).Column(cell =>
+                        {
+                            cell.Item().Text(e.VoucherNo).SemiBold();
+                            if (!string.IsNullOrWhiteSpace(e.SalesOrderNo))
+                                cell.Item().Text($"SO: {e.SalesOrderNo}").FontSize(7).FontColor(Colors.Blue.Medium);
+                        });
                         t.Cell().Element(RowCell).Text(e.VoucherType);
+                        t.Cell().Element(RowCell).Text(e.ItemName ?? string.Empty);
+                        t.Cell().Element(RowCell).AlignRight().Text(e.Quantity.HasValue ? $"{e.Quantity:0.###}" : "");
+                        t.Cell().Element(RowCell).Text(e.QuantityTypeLabel ?? string.Empty);
+                        t.Cell().Element(RowCell).AlignRight().Text(e.Rate.HasValue ? $"{e.Rate:0.00}" : "");
                         t.Cell().Element(RowCell).Text(e.Description ?? string.Empty);
+                        t.Cell().Element(RowCell).AlignRight().Text(e.DeliveryCharge > 0 ? $"{e.DeliveryCharge:0.00}" : "");
                         t.Cell().Element(RowCell).AlignRight().Text(e.Debit > 0 ? $"{e.Debit:0.00}" : "");
                         t.Cell().Element(RowCell).AlignRight().Text(e.Credit > 0 ? $"{e.Credit:0.00}" : "");
                         t.Cell().Element(RowCell).AlignRight().Text($"{e.RunningBalance:0.00}");
                     }
+
+                    var totalDelivery = soa.Entries.Sum(entry => entry.DeliveryCharge);
+                    t.Cell().Element(TotalCell).Text("");
+                    t.Cell().Element(TotalCell).Text("");
+                    t.Cell().Element(TotalCell).Text("");
+                    t.Cell().Element(TotalCell).Text("");
+                    t.Cell().Element(TotalCell).Text("");
+                    t.Cell().Element(TotalCell).Text("");
+                    t.Cell().Element(TotalCell).Text("");
+                    t.Cell().Element(TotalCell).Text("Closing Balance").SemiBold();
+                    t.Cell().Element(TotalCell).AlignRight().Text($"{totalDelivery:0.00}").SemiBold();
+                    t.Cell().Element(TotalCell).AlignRight().Text($"{soa.TotalDebit:0.00}").SemiBold();
+                    t.Cell().Element(TotalCell).AlignRight().Text($"{soa.TotalCredit:0.00}").SemiBold();
+                    t.Cell().Element(TotalCell).AlignRight().Text($"{soa.ClosingBalance:0.00}").SemiBold();
                 });
 
                 page.Footer().AlignRight().Text($"Generated: {DateTime.UtcNow:dd/MM/yyyy HH:mm} UTC").FontSize(8).FontColor(Colors.Grey.Darken1);
@@ -240,11 +283,12 @@ public class ReportPrintService : IReportPrintService
                         cd.RelativeColumn(1.0f);
                         cd.RelativeColumn(1.0f);
                         cd.RelativeColumn(1.0f);
+                        cd.RelativeColumn(1.0f);
                     });
 
                     t.Header(h =>
                     {
-                        var cols = new[] { "Date", "Voucher", "Type", "Account", "Category", "Item", "Qty", "Description", "Debit", "Credit", "Balance" };
+                        var cols = new[] { "Date", "Voucher / SO", "Type", "Account", "Category", "Item", "Qty", "Description", "Delivery", "Debit", "Credit", "Balance" };
                         foreach (var col in cols) h.Cell().Element(HeaderCell).Text(col);
                     });
 
@@ -258,6 +302,7 @@ public class ReportPrintService : IReportPrintService
                         t.Cell().Element(RowCell).Text("");
                         t.Cell().Element(RowCell).Text("");
                         t.Cell().Element(RowCell).Text("");
+                        t.Cell().Element(RowCell).Text("");
                         t.Cell().Element(RowCell).AlignRight().Text(report.OpeningDebit > 0 ? $"{report.OpeningDebit:0.00}" : "");
                         t.Cell().Element(RowCell).AlignRight().Text(report.OpeningCredit > 0 ? $"{report.OpeningCredit:0.00}" : "");
                         t.Cell().Element(RowCell).AlignRight().Text($"{report.OpeningBalance:0.00}");
@@ -266,13 +311,19 @@ public class ReportPrintService : IReportPrintService
                     foreach (var e in report.Entries)
                     {
                         t.Cell().Element(RowCell).Text(e.Date.ToString("dd/MM/yyyy"));
-                        t.Cell().Element(RowCell).Text(e.VoucherNo);
+                        t.Cell().Element(RowCell).Column(cell =>
+                        {
+                            cell.Item().Text(e.VoucherNo).SemiBold();
+                            if (!string.IsNullOrWhiteSpace(e.SalesOrderNo))
+                                cell.Item().Text($"SO: {e.SalesOrderNo}").FontSize(7).FontColor(Colors.Blue.Medium);
+                        });
                         t.Cell().Element(RowCell).Text(e.VoucherType);
                         t.Cell().Element(RowCell).Text(e.AccountName);
                         t.Cell().Element(RowCell).Text(e.AccountCategory);
                         t.Cell().Element(RowCell).Text(e.ItemName ?? string.Empty);
                         t.Cell().Element(RowCell).AlignRight().Text(e.Quantity.HasValue ? $"{e.Quantity:0.##} {e.QuantityTypeLabel}".Trim() : "");
                         t.Cell().Element(RowCell).Text(e.Description ?? string.Empty);
+                        t.Cell().Element(RowCell).AlignRight().Text(e.DeliveryCharge > 0 ? $"{e.DeliveryCharge:0.00}" : "");
                         t.Cell().Element(RowCell).AlignRight().Text(e.Debit > 0 ? $"{e.Debit:0.00}" : "");
                         t.Cell().Element(RowCell).AlignRight().Text(e.Credit > 0 ? $"{e.Credit:0.00}" : "");
                         t.Cell().Element(RowCell).AlignRight().Text($"{e.RunningBalance:0.00}");
@@ -289,6 +340,9 @@ public class ReportPrintService : IReportPrintService
 
     private static IContainer RowCell(IContainer c)
         => c.BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(3);
+
+    private static IContainer TotalCell(IContainer c)
+        => c.Background(Colors.Blue.Lighten5).BorderTop(1).BorderColor(Colors.Blue.Lighten2).Padding(5);
 
     private static string Fmt(DateTime? date) => date.HasValue ? date.Value.ToString("dd/MM/yyyy") : "All";
 

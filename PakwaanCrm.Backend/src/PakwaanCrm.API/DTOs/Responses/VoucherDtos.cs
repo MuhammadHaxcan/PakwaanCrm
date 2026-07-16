@@ -34,12 +34,17 @@ public class VoucherDetailDto
     };
     public string? Description { get; set; }
     public string? Notes { get; set; }
+    public int? SalesOrderId { get; set; }
+    public string? SalesOrderNo { get; set; }
+    public SalesOrderMode? SalesOrderMode { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<VoucherLineDto> Lines { get; set; } = new();
 }
 
 public class SalesVoucherCreateResultDto
 {
+    public int SalesOrderId { get; set; }
+    public string SalesOrderNo { get; set; } = string.Empty;
     public int CreatedCount { get; set; }
     public List<string> VoucherNos { get; set; } = new();
     public List<VoucherDetailDto> Vouchers { get; set; } = new();
@@ -62,9 +67,39 @@ public class VoucherLineDto
     public QuantityType? QuantityType { get; set; }
     public decimal? Quantity { get; set; }
     public decimal? Rate { get; set; }
+    public decimal DeliveryCharge { get; set; }
     public string? Description { get; set; }
     public decimal Debit { get; set; }
     public decimal Credit { get; set; }
+}
+
+public class SalesOrderDetailDto
+{
+    public int Id { get; set; }
+    public string OrderNo { get; set; } = string.Empty;
+    public SalesOrderMode Mode { get; set; }
+    public string ModeLabel => Mode == SalesOrderMode.CustomerDateWise ? "Customer Date-wise" : "Customer-wise";
+    public string? Description { get; set; }
+    public string? Notes { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public List<string> VoucherNos { get; set; } = new();
+    public List<SalesOrderLineDto> Lines { get; set; } = new();
+}
+
+public class SalesOrderLineDto
+{
+    public int VoucherId { get; set; }
+    public string VoucherNo { get; set; } = string.Empty;
+    public DateTime Date { get; set; }
+    public int CustomerId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public int ItemId { get; set; }
+    public string ItemName { get; set; } = string.Empty;
+    public QuantityType QuantityType { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal Rate { get; set; }
+    public decimal DeliveryCharge { get; set; }
+    public string? Description { get; set; }
 }
 
 public class PrintableVoucherDocument

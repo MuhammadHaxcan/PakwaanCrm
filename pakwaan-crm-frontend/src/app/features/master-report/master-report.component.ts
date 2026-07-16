@@ -211,6 +211,7 @@ export function buildFilteredAccountBalances(
                           <th *ngIf="visibleCols['item']">Item</th>
                           <th *ngIf="visibleCols['qty']" class="text-right">Qty</th>
                           <th *ngIf="visibleCols['description']">Description</th>
+                          <th *ngIf="visibleCols['delivery']" class="text-right">Delivery Charges</th>
                           <th *ngIf="visibleCols['debit']" class="text-right">Debit</th>
                           <th *ngIf="visibleCols['credit']" class="text-right">Credit</th>
                           <th *ngIf="visibleCols['balance']" class="text-right">Balance</th>
@@ -226,6 +227,7 @@ export function buildFilteredAccountBalances(
                           <td *ngIf="visibleCols['item']"></td>
                           <td *ngIf="visibleCols['qty']"></td>
                           <td *ngIf="visibleCols['description']"></td>
+                          <td *ngIf="visibleCols['delivery']"></td>
                           <td *ngIf="visibleCols['debit']" class="text-right font-bold">{{ openingDebit > 0 ? (openingDebit | number:'1.2-2') : '' }}</td>
                           <td *ngIf="visibleCols['credit']" class="text-right font-bold">{{ openingCredit > 0 ? (openingCredit | number:'1.2-2') : '' }}</td>
                           <td *ngIf="visibleCols['balance']" class="text-right font-bold">{{ openingBalance | number:'1.2-2' }}</td>
@@ -236,6 +238,7 @@ export function buildFilteredAccountBalances(
                             <a class="voucher-link" [href]="getVoucherPrintRoute(e.voucherType, e.voucherNo)" target="_blank" rel="noopener">
                               <strong>{{ e.voucherNo }}</strong>
                             </a>
+                            <div *ngIf="e.salesOrderNo" class="sales-order-ref">SO: {{ e.salesOrderNo }}</div>
                           </td>
                           <td *ngIf="visibleCols['voucherType']">
                             <span class="v-badge" [class.v-sales]="e.voucherType==='Sales'">{{ e.voucherType }}</span>
@@ -247,6 +250,7 @@ export function buildFilteredAccountBalances(
                             {{ e.quantity ? (e.quantity + ' ' + (e.quantityTypeLabel ?? '')) : '' }}
                           </td>
                           <td *ngIf="visibleCols['description']" class="text-muted" style="font-size:12px">{{ e.description }}</td>
+                          <td *ngIf="visibleCols['delivery']" class="text-right">{{ e.deliveryCharge > 0 ? (e.deliveryCharge | number:'1.2-2') : '' }}</td>
                           <td *ngIf="visibleCols['debit']" class="text-right text-red font-bold">
                             {{ e.debit > 0 ? (e.debit | number:'1.2-2') : '' }}
                           </td>
@@ -262,7 +266,8 @@ export function buildFilteredAccountBalances(
                       </tbody>
                       <tfoot>
                         <tr class="total-row">
-                          <td [attr.colspan]="visibleColCount - (visibleCols['debit'] ? 1 : 0) - (visibleCols['credit'] ? 1 : 0) - (visibleCols['balance'] ? 1 : 0)" class="text-right">Totals</td>
+                          <td [attr.colspan]="visibleColCount - (visibleCols['delivery'] ? 1 : 0) - (visibleCols['debit'] ? 1 : 0) - (visibleCols['credit'] ? 1 : 0) - (visibleCols['balance'] ? 1 : 0)" class="text-right">Totals</td>
+                          <td *ngIf="visibleCols['delivery']" class="text-right">{{ totalDelivery | number:'1.2-2' }}</td>
                           <td *ngIf="visibleCols['debit']"  class="text-right">{{ totalDebit  | number:'1.2-2' }}</td>
                           <td *ngIf="visibleCols['credit']" class="text-right">{{ totalCredit | number:'1.2-2' }}</td>
                           <td *ngIf="visibleCols['balance']" class="text-right">{{ closingBalance | number:'1.2-2' }}</td>
@@ -507,6 +512,14 @@ export function buildFilteredAccountBalances(
       border-color: rgba(27, 63, 139, 0.6);
     }
 
+    .sales-order-ref {
+      margin-top: 2px;
+      color: #3949ab;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
     @media (max-width: 1280px) {
       .master-filter-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -585,18 +598,19 @@ export class MasterReportComponent implements OnInit {
   private currentPage = 0;
   private readonly pageSize = 500;
 
-  columnKeys = ['date','voucherNo','voucherType','account','category','item','qty','description','debit','credit','balance'];
+  columnKeys = ['date','voucherNo','voucherType','account','category','item','qty','description','delivery','debit','credit','balance'];
   colLabels: Record<string,string> = {
     date:'Date', voucherNo:'Voucher', voucherType:'Type', account:'Account',
-    category:'Category', item:'Item', qty:'Qty', description:'Description', debit:'Debit', credit:'Credit', balance:'Balance'
+    category:'Category', item:'Item', qty:'Qty', description:'Description', delivery:'Delivery Charges', debit:'Debit', credit:'Credit', balance:'Balance'
   };
   visibleCols: Record<string, boolean> = {
     date:true, voucherNo:true, voucherType:true, account:true, category:true,
-    item:true, qty:true, description:true, debit:true, credit:true, balance:true
+    item:true, qty:true, description:true, delivery:true, debit:true, credit:true, balance:true
   };
 
   get visibleColCount() { return this.columnKeys.filter(k => this.visibleCols[k]).length; }
   get totalDebit()  { return this.filteredEntries.reduce((s, e) => s + e.debit,  0); }
+  get totalDelivery() { return this.filteredEntries.reduce((s, e) => s + e.deliveryCharge, 0); }
   get totalCredit() { return this.filteredEntries.reduce((s, e) => s + e.credit, 0); }
   get accountTotalDebit() { return this.filteredBalances.reduce((sum, account) => sum + account.totalDebit, 0); }
   get accountTotalCredit() { return this.filteredBalances.reduce((sum, account) => sum + account.totalCredit, 0); }
@@ -618,6 +632,7 @@ export class MasterReportComponent implements OnInit {
     if (!q) return this.entries;
     return this.entries.filter(e =>
       e.voucherNo.toLowerCase().includes(q) ||
+      (e.salesOrderNo ?? '').toLowerCase().includes(q) ||
       e.accountName.toLowerCase().includes(q) ||
       (e.description ?? '').toLowerCase().includes(q) ||
       (e.itemName ?? '').toLowerCase().includes(q)
@@ -716,24 +731,27 @@ export class MasterReportComponent implements OnInit {
 
   exportCsv() {
     const rows: unknown[][] = [[
-      'Date', 'Voucher No', 'Type', 'Account', 'Category', 'Item',
-      'Qty', 'Description', 'Debit', 'Credit', 'Balance'
+      'Date', 'Voucher No', 'Sales Order No', 'Type', 'Account', 'Category', 'Item',
+      'Qty', 'Description', 'Delivery Charges', 'Debit', 'Credit', 'Balance'
     ]];
     if (this.hasOpeningBalance) {
       rows.push([
-        '', '', '', 'Opening Balance', '', '', '', '',
+        '', '', '', '', 'Opening Balance', '', '', '', '', '',
         this.openingDebit, this.openingCredit, this.openingBalance
       ]);
     }
+
     rows.push(...this.filteredEntries.map(e => [
       new Date(e.date).toLocaleDateString('en-GB'),
       e.voucherNo,
+      e.salesOrderNo ?? '',
       e.voucherType,
       e.accountName,
       e.accountCategory,
       e.itemName ?? '',
       e.quantity ? `${e.quantity} ${e.quantityTypeLabel ?? ''}`.trim() : '',
       e.description ?? '',
+      e.deliveryCharge,
       e.debit,
       e.credit,
       e.runningBalance
